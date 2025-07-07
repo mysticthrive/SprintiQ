@@ -1,0 +1,120 @@
+"use client";
+
+import * as React from "react";
+import {
+  ThemeProvider as NextThemesProvider,
+  useTheme as useNextThemes,
+} from "next-themes";
+import type { ThemeProviderProps } from "next-themes";
+
+export type Theme = "light" | "dark" | "system";
+type Color =
+  | "default"
+  | "blue"
+  | "red"
+  | "gray"
+  | "orange"
+  | "pink"
+  | "cyan"
+  | "brown"
+  | "green"
+  | "purple";
+
+interface CustomThemeProviderProps extends ThemeProviderProps {
+  children: React.ReactNode;
+}
+
+interface ThemeContextType {
+  theme: Theme | undefined;
+  setTheme: (theme: Theme) => void;
+  color: Color;
+  setColor: (color: Color) => void;
+}
+
+const ThemeContext = React.createContext<ThemeContextType | undefined>(
+  undefined
+);
+
+export function ThemeProvider({
+  children,
+  ...props
+}: CustomThemeProviderProps) {
+  return (
+    <NextThemesProvider {...props}>
+      <InternalThemeProviderContent>{children}</InternalThemeProviderContent>
+    </NextThemesProvider>
+  );
+}
+
+function InternalThemeProviderContent({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const { theme, setTheme, resolvedTheme } = useNextThemes();
+  const [color, setColorState] = React.useState<Color>("green");
+
+  // Debug theme changes
+  React.useEffect(() => {
+    console.log("🎨 Theme provider - resolvedTheme changed to:", resolvedTheme);
+  }, [resolvedTheme]);
+
+  // Load saved color theme on mount
+  React.useEffect(() => {
+    const savedColor = localStorage.getItem("color-theme") as Color;
+    if (savedColor) {
+      setColorState(savedColor);
+      applyColorTheme(savedColor);
+    }
+  }, []);
+
+  const applyColorTheme = (colorValue: Color) => {
+    const root = document.documentElement;
+
+    // Remove all existing theme classes
+    const themeClasses = [
+      "theme-green",
+      "theme-blue",
+      "theme-red",
+      "theme-gray",
+      "theme-orange",
+      "theme-pink",
+      "theme-cyan",
+      "theme-brown",
+      "theme-purple",
+    ];
+    themeClasses.forEach((cls) => root.classList.remove(cls));
+
+    // Add new theme class (skip for default)
+    if (colorValue !== "default") {
+      root.classList.add(`theme-${colorValue}`);
+    }
+  };
+
+  const handleSetColor = (newColor: Color) => {
+    setColorState(newColor);
+    localStorage.setItem("color-theme", newColor);
+    applyColorTheme(newColor);
+  };
+
+  return (
+    <ThemeContext.Provider
+      value={{
+        theme: resolvedTheme as Theme,
+        setTheme: setTheme as (theme: Theme) => void,
+        color,
+        setColor: handleSetColor,
+      }}
+    >
+      {children}
+    </ThemeContext.Provider>
+  );
+}
+
+export function useTheme() {
+  const context = React.useContext(ThemeContext);
+  if (context === undefined) {
+    throw new Error("useTheme must be used within a ThemeProvider");
+  }
+  return context;
+}
