@@ -344,6 +344,17 @@ export interface Database {
           last_synced_at: string | null;
           sync_status: string | null;
           pending_sync: boolean | null;
+          business_value?: number | null;
+          user_impact?: number | null;
+          complexity?: number | null;
+          risk?: number | null;
+          dependencies?: number | null;
+          estimated_time?: number | null;
+          story_points?: number | null;
+          velocity?: number | null;
+          completion_rate?: number | null;
+          anti_pattern_warnings?: string[] | null;
+          success_pattern?: string | null;
         };
         Insert: {
           id?: string;
@@ -370,6 +381,17 @@ export interface Database {
           last_synced_at?: string | null;
           sync_status?: string | null;
           pending_sync?: boolean | null;
+          business_value?: number | null;
+          user_impact?: number | null;
+          complexity?: number | null;
+          risk?: number | null;
+          dependencies?: number | null;
+          estimated_time?: number | null;
+          story_points?: number | null;
+          velocity?: number | null;
+          completion_rate?: number | null;
+          anti_pattern_warnings?: string[] | null;
+          success_pattern?: string | null;
         };
         Update: {
           id?: string;
@@ -396,6 +418,17 @@ export interface Database {
           last_synced_at?: string | null;
           sync_status?: string | null;
           pending_sync?: boolean | null;
+          business_value?: number | null;
+          user_impact?: number | null;
+          complexity?: number | null;
+          risk?: number | null;
+          dependencies?: number | null;
+          estimated_time?: number | null;
+          story_points?: number | null;
+          velocity?: number | null;
+          completion_rate?: number | null;
+          anti_pattern_warnings?: string[] | null;
+          success_pattern?: string | null;
         };
       };
       tags: {

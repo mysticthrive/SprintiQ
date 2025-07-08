@@ -56,6 +56,10 @@ export interface UserStory {
   acceptanceCriteria: string[];
   storyPoints?: number;
   businessValue?: number;
+  userImpact?: number;
+  complexity?: number;
+  risk?: number;
+  dependencies?: string[];
   priority?: "Low" | "Medium" | "High" | "Critical";
   description?: string;
   tags?: string[];
@@ -66,14 +70,17 @@ export interface UserStory {
     reason: string;
     confidence: number;
   }[];
-  // New TAWOS-specific fields
   requirements?: string[];
-  estimatedTime?: number; // in hours
+  estimatedTime?: number;
   assignedTeamMember?: TeamMember;
   antiPatternWarnings?: string[];
   successPattern?: string;
   completionRate?: number;
   velocity?: number;
+  priorityScore?: number;
+  dependencyScore?: number;
+  estimatedHours?: number;
+  calculatedAt?: string;
 }
 
 // Team member interface

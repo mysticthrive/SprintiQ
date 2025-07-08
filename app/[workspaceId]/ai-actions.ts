@@ -13,13 +13,14 @@ import type {
   EnhancedStoryGenerationParams,
   Sprint,
 } from "@/types";
+import type { EnhancedSprint } from "@/lib/sprint-creation-service";
+import SprintCreationService from "@/lib/sprint-creation-service";
 import { DEFAULT_WEIGHTS } from "@/types";
 
 // Initialize Anthropic client
 const anthropic = new Anthropic({
   apiKey: process.env.CLAUDE_API_KEY,
 });
-const VOYAGE_API_KEY = process.env.VOYAGE_API_KEY;
 
 // Define the story generation parameters
 export type StoryGenerationParams = {
@@ -35,34 +36,8 @@ export type StoryGenerationParams = {
   useTAWOS?: boolean;
 };
 
-// Define the story structure
-export type UserStory = {
-  id: string;
-  title: string;
-  role: string;
-  want: string;
-  benefit: string;
-  acceptanceCriteria: string[];
-  storyPoints?: number;
-  businessValue?: number;
-  priority?: "Low" | "Medium" | "High" | "Critical";
-  tags?: string[];
-  parentTaskId?: string;
-  suggestedDependencies?: {
-    taskId: string;
-    reason: string;
-    confidence: number;
-  }[];
-  childTaskIds?: string[];
-  requirements?: string[];
-  estimatedTime?: number;
-  assignedTeamMember?: TeamMember;
-  antiPatternWarnings?: string[];
-  successPattern?: string;
-  completionRate?: number;
-  velocity?: number;
-  description?: string;
-};
+// Use the UserStory type from the main types file
+import type { UserStory } from "@/types";
 
 /**
  * Generate user stories using TAWOS approach with Supabase vector data
@@ -360,7 +335,14 @@ export async function generateTAWOSStories(
           // Manual extraction as last resort
           const extractedStories = extractPartialStories(
             jsonString,
-            numberOfStories
+            numberOfStories,
+            params.priorityWeights || {
+              businessValue: priorityWeights.businessValue,
+              userImpact: priorityWeights.userImpact,
+              complexity: priorityWeights.complexity,
+              risk: priorityWeights.risk,
+              dependencies: priorityWeights.dependencies,
+            }
           );
           if (extractedStories.length > 0) {
             stories = extractedStories;
@@ -388,6 +370,16 @@ export async function generateTAWOSStories(
         );
         stories.push(...additionalStories);
       }
+
+      // Set priority weight values for all stories (overriding AI-generated 1-5 scores)
+      stories = stories.map((story) => ({
+        ...story,
+        businessValue: priorityWeights.businessValue,
+        userImpact: priorityWeights.userImpact,
+        complexity: priorityWeights.complexity,
+        risk: priorityWeights.risk,
+        // Don't override dependencies field as it should remain string[]
+      }));
 
       // Add IDs and enhance with team assignment
       const enhancedStories = await Promise.all(
@@ -481,7 +473,8 @@ export async function generateTAWOSStories(
  */
 function extractPartialStories(
   jsonString: string,
-  numberOfStories: number
+  numberOfStories: number,
+  priorityWeights: PriorityWeights
 ): UserStory[] {
   const stories: UserStory[] = [];
 
@@ -519,7 +512,11 @@ function extractPartialStories(
         "Feature is tested and working correctly",
       ],
       storyPoints: storyPointsMatch ? parseInt(storyPointsMatch[1]) : 5,
-      businessValue: businessValueMatch ? parseInt(businessValueMatch[1]) : 3,
+      businessValue: priorityWeights.businessValue,
+      userImpact: priorityWeights.userImpact,
+      complexity: priorityWeights.complexity,
+      risk: priorityWeights.risk,
+      // dependencies should remain string[] type
       priority: (priorityMatch ? priorityMatch[1] : "Medium") as
         | "Low"
         | "Medium"
@@ -541,14 +538,14 @@ function extractPartialStories(
 }
 
 /**
- * Create sprint based on team velocity patterns
+ * Create enhanced sprint with AI support and proper capacity management
  */
 export async function createSprintFromStories(
   stories: UserStory[],
   teamMembers: TeamMember[],
   sprintDuration: number = 2
 ): Promise<{
-  sprint: Sprint | null;
+  sprint: EnhancedSprint | null;
   error?: string;
 }> {
   try {
@@ -566,26 +563,24 @@ export async function createSprintFromStories(
       };
     }
 
-    // Calculate team velocity
-    const teamVelocity = teamMembers.reduce((sum, member) => {
-      const levelMultiplier = {
-        Junior: 0.6,
-        Mid: 1.0,
-        Senior: 1.4,
-        Lead: 1.2,
-      };
+    // Calculate team capacity based on 8 hours per story point
+    const totalWeeklyHours = teamMembers.reduce(
+      (sum, member) => sum + (member.availability || 40),
+      0
+    );
+    const sprintHours = totalWeeklyHours * sprintDuration;
+    const sprintCapacity = Math.floor(sprintHours / 8); // 1 story point = 8 hours
 
-      const baseVelocity = 8;
-      const availabilityFactor = member.availability / 40;
+    // Ensure sprint capacity doesn't exceed 10 points per team member
+    const maxCapacityPerMember = 10;
+    const maxTotalCapacity = teamMembers.length * maxCapacityPerMember;
+    const finalCapacity = Math.min(sprintCapacity, maxTotalCapacity);
 
-      return (
-        sum + baseVelocity * levelMultiplier[member.level] * availabilityFactor
-      );
-    }, 0);
+    console.log(
+      `Team capacity: ${sprintCapacity} points, Max allowed: ${maxTotalCapacity} points, Using: ${finalCapacity} points`
+    );
 
-    const sprintCapacity = Math.round(teamVelocity * sprintDuration);
-
-    // Sort stories by priority and complexity
+    // Sort stories by priority (Critical > High > Medium > Low) and then by story points
     const sortedStories = [...stories].sort((a, b) => {
       const priorityOrder = { Critical: 4, High: 3, Medium: 2, Low: 1 };
       const aPriority = priorityOrder[a.priority || "Medium"];
@@ -595,39 +590,65 @@ export async function createSprintFromStories(
         return bPriority - aPriority;
       }
 
+      // For same priority, prefer smaller stories first
       return (a.storyPoints || 0) - (b.storyPoints || 0);
     });
 
-    // Distribute stories based on capacity
-    let currentCapacity = sprintCapacity;
+    // Group stories by dependencies to ensure dependent stories are in the same sprint
+    const dependencyGroups = groupStoriesByDependencies(sortedStories);
+
+    // Distribute stories based on capacity and dependencies
+    let currentCapacity = finalCapacity;
     const sprintStories: UserStory[] = [];
     const remainingStories: UserStory[] = [];
 
-    for (const story of sortedStories) {
-      const storyPoints = story.storyPoints || 1;
+    for (const group of dependencyGroups) {
+      const groupStoryPoints = group.reduce(
+        (sum, story) => sum + (story.storyPoints || 0),
+        0
+      );
 
-      if (storyPoints <= currentCapacity) {
-        sprintStories.push(story);
-        currentCapacity -= storyPoints;
+      if (groupStoryPoints <= currentCapacity) {
+        // Add entire group to sprint
+        sprintStories.push(...group);
+        currentCapacity -= groupStoryPoints;
       } else {
-        remainingStories.push(story);
+        // Group is too large, add individual stories that fit
+        for (const story of group) {
+          const storyPoints = story.storyPoints || 1;
+          if (storyPoints <= currentCapacity) {
+            sprintStories.push(story);
+            currentCapacity -= storyPoints;
+          } else {
+            remainingStories.push(story);
+          }
+        }
       }
     }
 
-    const sprint: Sprint = {
-      id: `sprint-${Date.now()}`,
-      name: `Sprint ${new Date().toLocaleDateString()}`,
-      duration: sprintDuration,
-      capacity: sprintCapacity,
-      stories: sprintStories,
-      teamMembers,
-      velocity: Math.round(teamVelocity),
-      startDate: new Date(),
-      endDate: new Date(Date.now() + sprintDuration * 7 * 24 * 60 * 60 * 1000),
-      status: "Planning",
-    };
+    // Create enhanced sprint using the sprint creation service
+    const sprintCreationService = new SprintCreationService({
+      sprintDuration: sprintDuration * 7, // Convert weeks to days
+      workingDaysPerWeek: 5,
+      hoursPerDay: 8,
+      velocityBuffer: 0.8,
+    });
 
-    return { sprint };
+    const enhancedSprints = await sprintCreationService.createDetailedSprints(
+      sprintStories,
+      { totalStoryPoints: finalCapacity, totalHours: sprintHours },
+      teamMembers,
+      { startDate: new Date().toISOString() }
+    );
+
+    if (enhancedSprints.length === 0) {
+      return {
+        sprint: null,
+        error: "Failed to create enhanced sprint",
+      };
+    }
+
+    return { sprint: enhancedSprints[0] };
   } catch (error) {
     console.error("Error creating sprint:", error);
     return {
@@ -637,25 +658,77 @@ export async function createSprintFromStories(
   }
 }
 
+/**
+ * Group stories by dependencies to ensure dependent stories are in the same sprint
+ */
+function groupStoriesByDependencies(stories: UserStory[]): UserStory[][] {
+  const groups: UserStory[][] = [];
+  const visited = new Set<string>();
+
+  for (const story of stories) {
+    if (visited.has(story.id)) continue;
+
+    const group = findDependencyGroup(story, stories, visited);
+    groups.push(group);
+  }
+
+  return groups;
+}
+
+/**
+ * Find all stories that are dependent on each other
+ */
+function findDependencyGroup(
+  story: UserStory,
+  allStories: UserStory[],
+  visited: Set<string>
+): UserStory[] {
+  const group: UserStory[] = [];
+  const queue: UserStory[] = [story];
+
+  while (queue.length > 0) {
+    const currentStory = queue.shift()!;
+    if (visited.has(currentStory.id)) continue;
+
+    visited.add(currentStory.id);
+    group.push(currentStory);
+
+    // Find stories that depend on this story
+    const dependents = allStories.filter(
+      (s) => s.dependencies && s.dependencies.includes(currentStory.id)
+    );
+
+    // Find stories that this story depends on
+    const dependencies = allStories.filter(
+      (s) =>
+        currentStory.dependencies && currentStory.dependencies.includes(s.id)
+    );
+
+    queue.push(...dependents, ...dependencies);
+  }
+
+  return group;
+}
+
 // For embeddings, we'll use a helper function
 async function generateEmbedding(text: string): Promise<number[] | null> {
   try {
-    if (!VOYAGE_API_KEY) {
-      throw new Error("Voyage API key is required for embeddings");
+    if (!process.env.OPENAI_API_KEY) {
+      throw new Error("OpenAI API key is required for embeddings");
     }
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 30000);
 
-    const response = await fetch("https://api.voyageai.com/v1/embeddings", {
+    const response = await fetch("https://api.openai.com/v1/embeddings", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${VOYAGE_API_KEY}`,
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
         input: text,
-        model: "voyage-3.5-large", // Using voyage-3.5-large for 1536 dimensions (compatible with pgvector)
+        model: "text-embedding-ada-002", // Using ada-002 for 1536 dimensions (compatible with pgvector)
       }),
       signal: controller.signal,
     });
@@ -663,7 +736,7 @@ async function generateEmbedding(text: string): Promise<number[] | null> {
     clearTimeout(timeoutId);
 
     if (!response.ok) {
-      throw new Error(`Voyage API error: ${response.statusText}`);
+      throw new Error(`OpenAI API error: ${response.statusText}`);
     }
 
     const data = await response.json();
@@ -724,9 +797,6 @@ ${formattedAcceptanceCriteria}
 ## Metadata
 - Story Points: ${
       story.storyPoints ? Math.round(story.storyPoints) : "Not estimated"
-    }
-- Business Value: ${
-      story.businessValue ? Math.round(story.businessValue) : "Not specified"
     }
 - Priority: ${story.priority || "Not specified"}
     `.trim();
@@ -1308,45 +1378,6 @@ function getDefaultStatusColorName(index: number): string {
 }
 
 /**
- * Create default statuses for a project
- */
-async function createDefaultStatuses(
-  projectId: string,
-  workspaceId: string,
-  supabase: any
-): Promise<boolean> {
-  try {
-    const defaultStatuses = [
-      { name: "TODO", color: "gray" },
-      { name: "INPROGRESS", color: "blue" },
-      { name: "DONE", color: "green" },
-    ];
-
-    const statusInserts = defaultStatuses.map((status, index) => ({
-      name: status.name,
-      color: status.color, // Save color name directly
-      position: index,
-      type: "project",
-      project_id: projectId,
-      workspace_id: workspaceId,
-    }));
-
-    const { error } = await supabase.from("statuses").insert(statusInserts);
-
-    if (error) {
-      console.error("Failed to create default statuses:", error);
-      return false;
-    }
-
-    console.log("Successfully created default statuses for project");
-    return true;
-  } catch (error) {
-    console.error("Error creating default statuses:", error);
-    return false;
-  }
-}
-
-/**
  * Create a new space and project with AI-generated content
  * @param workspaceId The workspace ID
  * @param spaceName The name of the new space (empty string if using existing space)
@@ -1878,7 +1909,8 @@ export async function saveUserStoryToDestination(
     spaceName?: string;
     projectName?: string;
     statusNames?: string[];
-  }
+  },
+  priorityWeights?: PriorityWeights
 ): Promise<{ success: boolean; error?: string; taskId?: string }> {
   try {
     const supabase = await createServerSupabaseClient();
@@ -2050,9 +2082,23 @@ export async function saveUserStoryToDestination(
       - **Story Points**: ${
         story.storyPoints ? Math.round(story.storyPoints) : "Not estimated"
       }
-      - **Business Value**: ${
+      - **Business Value Weight**: ${
         story.businessValue ? Math.round(story.businessValue) : "Not specified"
-      }/5
+      }%
+      - **User Impact Weight**: ${
+        story.userImpact ? Math.round(story.userImpact) : "Not specified"
+      }%
+      - **Complexity Weight**: ${
+        story.complexity ? Math.round(story.complexity) : "Not specified"
+      }%
+      - **Risk Weight**: ${
+        story.risk ? Math.round(story.risk) : "Not specified"
+      }%
+      - **Dependencies**: ${
+        story.dependencies && story.dependencies.length > 0
+          ? story.dependencies.join(", ")
+          : "None specified"
+      }
       - **Priority**: ${story.priority || "Medium"}
       - **Estimated Time**: ${
         story.estimatedTime
@@ -2088,7 +2134,11 @@ export async function saveUserStoryToDestination(
     const externalData = {
       tawos: {
         storyPoints: story.storyPoints,
-        businessValue: story.businessValue,
+        businessValue: priorityWeights?.businessValue || story.businessValue,
+        userImpact: priorityWeights?.userImpact || story.userImpact,
+        complexity: priorityWeights?.complexity || story.complexity,
+        risk: priorityWeights?.risk || story.risk,
+        dependencies: priorityWeights?.dependencies || story.dependencies,
         estimatedTime: story.estimatedTime,
         successPattern: story.successPattern,
         completionRate: story.completionRate,
@@ -2131,9 +2181,8 @@ export async function saveUserStoryToDestination(
           ? Math.round(story.estimatedTime)
           : null,
         story_points: story.storyPoints ? Math.round(story.storyPoints) : null,
-        business_value: story.businessValue
-          ? Math.round(story.businessValue)
-          : null,
+        business_value:
+          priorityWeights?.businessValue || story.businessValue || null,
         velocity: story.velocity ? Math.round(story.velocity) : null,
         assignee_id: assigneeId || null,
         project_id: project.id,
@@ -2425,7 +2474,12 @@ function generateFallbackStories(
       ],
       storyPoints:
         complexity === "simple" ? 3 : complexity === "complex" ? 8 : 5,
-      businessValue: Math.floor(Math.random() * 3) + 3, // 3-5
+      businessValue: priorityWeights?.businessValue || 25,
+      userImpact: priorityWeights?.userImpact || 20,
+      complexity: priorityWeights?.complexity || 20,
+      risk: priorityWeights?.risk || 15,
+      dependencies: [], // dependencies should be string array, not number
+
       priority: ["Low", "Medium", "High"][Math.floor(Math.random() * 3)] as
         | "Low"
         | "Medium"

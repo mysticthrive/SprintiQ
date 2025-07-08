@@ -1,7 +1,6 @@
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 // Initialize OpenAI client for embeddings
-const VOYAGE_API_KEY = process.env.VOYAGE_API_KEY;
 
 // Type definitions
 interface VectorSearchResult {
@@ -34,8 +33,8 @@ const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
  */
 async function generateEmbedding(text: string): Promise<number[] | null> {
   try {
-    if (!VOYAGE_API_KEY) {
-      throw new Error("Voyage API key is required for embeddings");
+    if (!process.env.OPENAI_API_KEY) {
+      throw new Error("OpenAI API key is required for embeddings");
     }
 
     // Check cache first
@@ -61,15 +60,15 @@ async function generateEmbedding(text: string): Promise<number[] | null> {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 30000);
 
-    const response = await fetch("https://api.voyageai.com/v1/embeddings", {
+    const response = await fetch("https://api.openai.com/v1/embeddings", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${VOYAGE_API_KEY}`,
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
         input: text,
-        model: "voyage-3.5-large", // Using voyage-3.5-large for 1536 dimensions
+        model: "text-embedding-ada-002", // Using voyage-3.5-large for 1536 dimensions
       }),
       signal: controller.signal,
     });
@@ -78,11 +77,11 @@ async function generateEmbedding(text: string): Promise<number[] | null> {
 
     if (!response.ok) {
       if (response.status === 429) {
-        console.warn("Voyage API rate limit exceeded, retrying after delay...");
+        console.warn("OpenAI API rate limit exceeded, retrying after delay...");
         await new Promise((resolve) => setTimeout(resolve, 2000));
         return generateEmbedding(text); // Retry once
       }
-      throw new Error(`Voyage API error: ${response.statusText}`);
+      throw new Error(`OpenAI API error: ${response.statusText}`);
     }
 
     const data = await response.json();
@@ -623,8 +622,8 @@ async function getCurrentWorkloadsFromDatabase(
         if (task.estimated_time) {
           totalWorkload += task.estimated_time;
         } else if (task.story_points) {
-          // Estimate: 1 story point ≈ 4 hours
-          totalWorkload += task.story_points * 4;
+          // Estimate: 1 story point ≈ 8 hours
+          totalWorkload += task.story_points * 8;
         }
       });
 

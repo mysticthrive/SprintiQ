@@ -12,7 +12,6 @@ import {
   saveTeamMember,
   createSpaceAndProject,
   analyzeStoryDependencies,
-  createSprintFromStories,
 } from "@/app/[workspaceId]/ai-actions";
 import {
   Pencil,
@@ -39,9 +38,15 @@ import { useParams } from "next/navigation";
 import { PriorityWeights } from "@/components/workspace/ai/priority-scoring-config";
 import StoryInputForm from "@/components/workspace/ai/story-input-form";
 import SprintAssistant from "@/components/workspace/ai/sprint-assistant";
+import type { EnhancedSprint } from "@/lib/sprint-creation-service";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import SaveProgressModal from "@/components/workspace/ai/save-progress-modal";
-import { DEFAULT_WEIGHTS, type TeamMember, type Sprint } from "@/types";
+import {
+  DEFAULT_WEIGHTS,
+  type TeamMember,
+  type Sprint,
+  UserStory,
+} from "@/types";
 import { getPriorityColor } from "@/lib/utils";
 import EditStoryModal from "@/components/workspace/ai/edit-story-modal";
 import SaveDestinationModal from "@/components/workspace/ai/save-destination-modal";
@@ -78,54 +83,13 @@ interface Project {
   name: string;
 }
 
-interface ProjectSuggestions {
-  spaceName: string;
-  projectName: string;
-  statusNames: string[];
-  statusColors?: string[];
-}
-
-interface UserStory {
-  id: string;
-  title: string;
-  role: string;
-  want: string;
-  benefit: string;
-  acceptanceCriteria: string[];
-  storyPoints?: number;
-  businessValue?: number;
-  priority?: "Low" | "Medium" | "High" | "Critical";
-  description?: string;
-  tags?: string[];
-  childTaskIds?: string[];
-  parentTaskId?: string;
-  suggestedDependencies?: {
-    taskId: string;
-    confidence: number;
-    reason: string;
-  }[];
-  // TAWOS-specific fields
-  requirements?: string[];
-  estimatedTime?: number;
-  assignedTeamMember?: TeamMember;
-  antiPatternWarnings?: string[];
-  successPattern?: string;
-  completionRate?: number;
-  velocity?: number;
-}
-
 export default function AgentsPage() {
   const params = useParams();
   const workspaceId = params.workspaceId as string;
 
-  // Form state
-  const [complexity, setComplexity] = useState<
-    "simple" | "moderate" | "complex"
-  >("moderate");
   const [priorityWeights, setPriorityWeights] =
     useState<PriorityWeights>(DEFAULT_WEIGHTS);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
-  const [useTAWOS, setUseTAWOS] = useState(true);
 
   // Generation state
   const [isGenerating, setIsGenerating] = useState(false);
@@ -173,7 +137,9 @@ export default function AgentsPage() {
     useState<UserStory | null>(null);
   const [isAnalyzingDependencies, setIsAnalyzingDependencies] = useState(false);
   const [showAnalyzingModal, setShowAnalyzingModal] = useState(false);
-  const [currentSprint, setCurrentSprint] = useState<Sprint | null>(null);
+  const [currentSprint, setCurrentSprint] = useState<EnhancedSprint | null>(
+    null
+  );
 
   const { toast } = useEnhancedToast();
   const supabase = createClientSupabaseClient();
@@ -342,51 +308,6 @@ export default function AgentsPage() {
       });
     } finally {
       setIsGeneratingSuggestions(false);
-    }
-  };
-
-  const handleSprintAssistant = async () => {
-    if (!generatedStories.length || !teamMembers.length) {
-      toast({
-        title: "Missing requirements",
-        description: "Please generate stories and add team members first.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    try {
-      const { sprint, error } = await createSprintFromStories(
-        generatedStories,
-        teamMembers,
-        2 // Default 2-week sprint
-      );
-
-      if (error) {
-        toast({
-          title: "Sprint creation failed",
-          description: error,
-          variant: "destructive",
-        });
-        return;
-      }
-
-      if (sprint) {
-        setCurrentSprint(sprint);
-        setShowSprintAssistant(true);
-        toast({
-          title: "Sprint created",
-          description: `Sprint with ${sprint.stories.length} stories created successfully.`,
-          browserNotificationTitle: "Sprint created",
-          browserNotificationBody: `Sprint with ${sprint.stories.length} stories created successfully.`,
-        });
-      }
-    } catch (error) {
-      toast({
-        title: "Sprint creation failed",
-        description: "An unexpected error occurred.",
-        variant: "destructive",
-      });
     }
   };
 
@@ -609,7 +530,8 @@ export default function AgentsPage() {
               type: "existing", // Always use "existing" here because we've already created the space/project if needed
               spaceId,
               projectId,
-            }
+            },
+            priorityWeights
           );
 
           if (saveResult.success) {
@@ -997,17 +919,10 @@ export default function AgentsPage() {
                                   <Target className="h-3 w-3 mr-1" />
                                   {story.storyPoints} pts
                                 </Badge>
-                                <Badge
-                                  variant="outline"
-                                  className="bg-green-500/10 text-green-500 flex items-center"
-                                >
-                                  <BriefcaseBusiness className="h-3 w-3 mr-1" />
-                                  Value: {story.businessValue}/5
-                                </Badge>
                                 {story.estimatedTime && (
                                   <Badge
                                     variant="outline"
-                                    className="bg-blue-500/10 text-blue-500 flex items-center"
+                                    className="bg-blue-500/10 border-blue-500/10 text-blue-500 flex items-center"
                                   >
                                     <Clock className="h-3 w-3 mr-1" />
                                     {story.estimatedTime}h
@@ -1293,7 +1208,7 @@ export default function AgentsPage() {
           open={showSprintAssistant}
           onOpenChange={setShowSprintAssistant}
         >
-          <DialogContent className="max-w-4xl">
+          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Sprint Planning Assistant</DialogTitle>
             </DialogHeader>
@@ -1303,10 +1218,11 @@ export default function AgentsPage() {
               onSprintCreated={(sprint) => {
                 setCurrentSprint(sprint);
                 toast({
-                  title: "Sprint created",
-                  description: `Sprint "${sprint.name}" with ${sprint.stories.length} stories created successfully.`,
+                  title: "Enhanced Sprint created",
+                  description: `Enhanced sprint "${sprint.name}" with ${sprint.stories.length} stories created successfully.`,
                 });
               }}
+              onClose={() => setShowSprintAssistant(false)}
             />
           </DialogContent>
         </Dialog>
