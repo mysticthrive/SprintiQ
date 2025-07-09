@@ -69,6 +69,8 @@ import {
   TooltipProvider,
 } from "@/components/ui/tooltip";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { motion, AnimatePresence } from "framer-motion";
+import { Typewriter } from "react-simple-typewriter";
 
 interface Space {
   id: string;
@@ -140,6 +142,35 @@ export default function AgentsPage() {
   const [currentSprint, setCurrentSprint] = useState<EnhancedSprint | null>(
     null
   );
+
+  // Progressive reveal state
+  const [visibleCount, setVisibleCount] = useState(0);
+
+  // Reveal stories one by one when generatedStories changes
+  useEffect(() => {
+    if (!generatedStories.length) {
+      setVisibleCount(0);
+      return;
+    }
+    setVisibleCount(0);
+    let i = 0;
+    const interval = setInterval(() => {
+      i++;
+      setVisibleCount((prev) => {
+        if (prev < generatedStories.length) {
+          return prev + 1;
+        } else {
+          clearInterval(interval);
+          return prev;
+        }
+      });
+      if (i >= generatedStories.length) {
+        clearInterval(interval);
+      }
+    }, 300);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [generatedStories]);
 
   const { toast } = useEnhancedToast();
   const supabase = createClientSupabaseClient();
@@ -861,7 +892,7 @@ export default function AgentsPage() {
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 flex-1 p-3">
           {/* Left Column - Story Generation Form */}
-          <div className="space-y-6 workspace-secondary-sidebar-bg rounded-xl p-3 overflow-y-auto h-[calc(100vh-154px)]">
+          <div className="space-y-6 workspace-secondary-sidebar-bg rounded-xl py-3 border workspace-border">
             <StoryInputForm
               onSubmit={handleStorySubmit}
               isLoading={isGenerating}
@@ -882,222 +913,364 @@ export default function AgentsPage() {
               </CardHeader>
               <CardContent className="flex-1 p-0">
                 <ScrollArea className="h-[calc(100vh-224px)] px-4">
-                  {generatedStories.length > 0 ? (
-                    <div className="space-y-4 pb-4">
-                      {generatedStories.map((story) => (
-                        <Card
-                          key={story.id}
-                          className={cn(
-                            "p-4",
-                            story.parentTaskId &&
-                              "border-l-4 border-blue-500 pl-3"
-                          )}
+                  {isGenerating ? (
+                    <div className="flex flex-col items-center justify-center h-full py-24">
+                      {/* Animated progress bar */}
+                      <div className="w-full flex flex-col items-center mb-8">
+                        <motion.div className="w-48 h-2 rounded-full bg-emerald-100 overflow-hidden mb-3">
+                          <motion.div
+                            className="h-2 bg-emerald-400 rounded-full"
+                            initial={{ width: 0 }}
+                            animate={{ width: "100%" }}
+                            transition={{
+                              duration: 2,
+                              repeat: Infinity,
+                              repeatType: "loop",
+                              ease: "easeInOut",
+                            }}
+                          />
+                        </motion.div>
+                        <motion.div
+                          className="text-base font-semibold text-gray-700 tracking-wide"
+                          initial={{ opacity: 0.5 }}
+                          animate={{ opacity: [0.5, 1, 0.5] }}
+                          transition={{
+                            repeat: Infinity,
+                            duration: 1.5,
+                            ease: "easeInOut",
+                          }}
                         >
-                          <div className="space-y-2">
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-2">
-                                <h3 className="font-semibold">{story.title}</h3>
-                                {story.parentTaskId && (
-                                  <Badge variant="outline" className="text-xs">
-                                    Sub-story
-                                  </Badge>
-                                )}
-                              </div>
-                              <div className="flex items-center space-x-2">
-                                <Badge
-                                  className={`${getPriorityColor(
-                                    story.priority
-                                  )} text-xs flex items-center`}
-                                >
-                                  <Goal className="h-3 w-3 mr-1" />
-                                  {story.priority}
-                                </Badge>
-                                <Badge
-                                  variant="outline"
-                                  className="flex items-center"
-                                >
-                                  <Target className="h-3 w-3 mr-1" />
-                                  {story.storyPoints} pts
-                                </Badge>
-                                {story.estimatedTime && (
-                                  <Badge
-                                    variant="outline"
-                                    className="bg-blue-500/10 border-blue-500/10 text-blue-500 flex items-center"
-                                  >
-                                    <Clock className="h-3 w-3 mr-1" />
-                                    {story.estimatedTime}h
-                                  </Badge>
-                                )}
-                                {story.assignedTeamMember && (
-                                  <Avatar className="h-8 w-8">
-                                    <AvatarImage
-                                      src={story.assignedTeamMember.avatar_url}
-                                      alt={story.assignedTeamMember.name}
-                                    />
-                                    <AvatarFallback className="text-xs font-bold text-workspace-primary workspace-component-bg">
-                                      {story.assignedTeamMember.name
-                                        .split(" ")
-                                        .map((n) => n[0])
-                                        .join("")
-                                        .toUpperCase()
-                                        .slice(0, 2)}
-                                    </AvatarFallback>
-                                  </Avatar>
-                                )}
-                              </div>
+                          Generating stories...
+                        </motion.div>
+                      </div>
+                      {/* Skeleton cards reveal */}
+                      <div className="w-full max-w-xl space-y-4">
+                        {[...Array(4)].map((_, idx) => (
+                          <motion.div
+                            key={idx}
+                            initial={{ opacity: 0, y: 30 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{
+                              delay: idx * 0.3,
+                              duration: 0.5,
+                              type: "spring",
+                            }}
+                            className="workspace-header-bg border workspace-border rounded-lg shadow-sm p-4 flex flex-col gap-3"
+                            style={{ minHeight: 120 }}
+                          >
+                            <div className="h-5 w-1/3 bg-gray-200 rounded animate-pulse" />
+                            <div className="h-4 w-2/3 bg-gray-100 rounded animate-pulse" />
+                            <div className="h-3 w-1/2 bg-gray-100 rounded animate-pulse" />
+                            <div className="flex gap-2 mt-2">
+                              <div className="h-6 w-16 bg-emerald-100 rounded-full animate-pulse" />
+                              <div className="h-6 w-16 bg-gray-200 rounded-full animate-pulse" />
+                              <div className="h-6 w-12 bg-gray-100 rounded-full animate-pulse" />
                             </div>
-                            {story.parentTaskId && (
-                              <div className="text-sm text-muted-foreground">
-                                Parent story:{" "}
-                                {
-                                  generatedStories.find(
-                                    (s) => s.id === story.parentTaskId
-                                  )?.title
-                                }
-                              </div>
-                            )}
-                            <p className="text-sm text-muted-foreground">
-                              As a{" "}
-                              <span className="font-medium">{story.role}</span>,
-                              I want{" "}
-                              <span className="font-medium">{story.want}</span>,
-                              so that{" "}
-                              <span className="font-medium">
-                                {story.benefit}
-                              </span>
-                            </p>
-                            <div className="mt-2">
-                              <h4 className="text-sm font-semibold mb-1">
-                                Acceptance Criteria:
-                              </h4>
-                              <ul className="list-disc list-inside text-sm space-y-1">
-                                {story.acceptanceCriteria.map(
-                                  (criteria, index) => (
-                                    <li key={index}>{criteria}</li>
-                                  )
+                            <div className="h-3 w-full bg-gray-100 rounded animate-pulse mt-2" />
+                          </motion.div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : generatedStories.length > 0 ? (
+                    <AnimatePresence>
+                      <div className="space-y-4 pb-4">
+                        {generatedStories
+                          .slice(0, visibleCount)
+                          .map((story, idx) => (
+                            <motion.div
+                              key={story.id}
+                              initial={{ opacity: 0, y: 20 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              exit={{ opacity: 0, y: 20 }}
+                              transition={{
+                                delay: idx * 0.25,
+                                duration: 0.5,
+                                type: "spring",
+                              }}
+                            >
+                              <Card
+                                className={cn(
+                                  "p-4",
+                                  story.parentTaskId &&
+                                    "border-l-4 border-blue-500 pl-3"
                                 )}
-                              </ul>
-                            </div>
-                            {story.requirements &&
-                              story.requirements.length > 0 && (
-                                <div className="mt-2">
-                                  <h4 className="text-sm font-semibold mb-1">
-                                    Requirements:
-                                  </h4>
-                                  <ul className="list-disc list-inside text-sm space-y-1">
-                                    {story.requirements.map((req, index) => (
-                                      <li key={index}>{req}</li>
-                                    ))}
-                                  </ul>
-                                </div>
-                              )}
-                            {story.antiPatternWarnings &&
-                              story.antiPatternWarnings.length > 0 && (
-                                <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded">
-                                  <h4 className="text-sm font-semibold mb-1 text-yellow-800">
-                                    ⚠️ Anti-pattern Warnings:
-                                  </h4>
-                                  <ul className="list-disc list-inside text-sm space-y-1 text-yellow-700">
-                                    {story.antiPatternWarnings.map(
-                                      (warning, index) => (
-                                        <li key={index}>{warning}</li>
-                                      )
-                                    )}
-                                  </ul>
-                                </div>
-                              )}
-                            {story.tags && story.tags.length > 0 && (
-                              <div className="flex flex-wrap gap-2 mt-2">
-                                {story.tags.map((tag, index) => (
-                                  <Badge
-                                    key={index}
-                                    variant="secondary"
-                                    className="text-xs"
-                                  >
-                                    {tag}
-                                  </Badge>
-                                ))}
-                              </div>
-                            )}
-                            {story.suggestedDependencies &&
-                              story.suggestedDependencies.length > 0 && (
-                                <div className="mt-4">
-                                  <h4 className="text-sm font-semibold mb-2">
-                                    Suggested Dependencies
-                                  </h4>
-                                  <hr className="my-2 workspace-border" />
-                                  <div className="space-y-2">
-                                    {story.suggestedDependencies.map(
-                                      (dep, index) => {
-                                        const dependentStory =
-                                          generatedStories.find(
-                                            (s) => s.id === dep.taskId
-                                          );
-                                        if (!dependentStory) return null;
-                                        return (
-                                          <div
-                                            key={index}
-                                            className="p-2 workspace-component-bg rounded-lg text-sm"
+                              >
+                                <div className="space-y-2">
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                      <h3 className="font-semibold">
+                                        <Typewriter
+                                          words={[story.title]}
+                                          typeSpeed={30}
+                                          cursor={false}
+                                        />
+                                      </h3>
+                                      {story.parentTaskId && (
+                                        <Badge
+                                          variant="outline"
+                                          className="text-xs"
+                                        >
+                                          Sub-story
+                                        </Badge>
+                                      )}
+                                    </div>
+                                    <div className="flex items-center space-x-2">
+                                      <motion.div
+                                        initial={{ scale: 0 }}
+                                        animate={{ scale: 1 }}
+                                        transition={{
+                                          delay: idx * 0.25 + 0.2,
+                                          type: "spring",
+                                          stiffness: 400,
+                                          damping: 20,
+                                        }}
+                                      >
+                                        <Badge
+                                          className={`${getPriorityColor(
+                                            story.priority
+                                          )} text-xs flex items-center`}
+                                        >
+                                          <Goal className="h-3 w-3 mr-1" />
+                                          {story.priority}
+                                        </Badge>
+                                      </motion.div>
+                                      <motion.div
+                                        initial={{ scale: 0 }}
+                                        animate={{ scale: 1 }}
+                                        transition={{
+                                          delay: idx * 0.25 + 0.3,
+                                          type: "spring",
+                                          stiffness: 400,
+                                          damping: 20,
+                                        }}
+                                      >
+                                        <Badge
+                                          variant="outline"
+                                          className="flex items-center"
+                                        >
+                                          <Target className="h-3 w-3 mr-1" />
+                                          {story.storyPoints} pts
+                                        </Badge>
+                                      </motion.div>
+                                      {story.estimatedTime && (
+                                        <motion.div
+                                          initial={{ scale: 0 }}
+                                          animate={{ scale: 1 }}
+                                          transition={{
+                                            delay: idx * 0.25 + 0.4,
+                                            type: "spring",
+                                            stiffness: 400,
+                                            damping: 20,
+                                          }}
+                                        >
+                                          <Badge
+                                            variant="outline"
+                                            className="bg-blue-500/10 border-blue-500/10 text-blue-500 flex items-center"
                                           >
-                                            <div className="flex items-center justify-between">
-                                              <span className="font-medium workspace-component-active-color">
-                                                {dependentStory.title}
-                                              </span>
-                                              <Badge variant="workspace">
-                                                {Math.round(
-                                                  dep.confidence * 100
-                                                )}
-                                                % confidence
-                                              </Badge>
-                                            </div>
-                                            <p className="workspace-component-active-color mt-1 ">
-                                              {dep.reason}
-                                            </p>
-                                          </div>
-                                        );
+                                            <Clock className="h-3 w-3 mr-1" />
+                                            {story.estimatedTime}h
+                                          </Badge>
+                                        </motion.div>
+                                      )}
+                                      {story.assignedTeamMember && (
+                                        <Avatar className="h-8 w-8">
+                                          <AvatarImage
+                                            src={
+                                              story.assignedTeamMember
+                                                .avatar_url
+                                            }
+                                            alt={story.assignedTeamMember.name}
+                                          />
+                                          <AvatarFallback className="text-xs font-bold text-workspace-primary workspace-component-bg">
+                                            {story.assignedTeamMember.name
+                                              .split(" ")
+                                              .map((n) => n[0])
+                                              .join("")
+                                              .toUpperCase()
+                                              .slice(0, 2)}
+                                          </AvatarFallback>
+                                        </Avatar>
+                                      )}
+                                    </div>
+                                  </div>
+                                  {story.parentTaskId && (
+                                    <div className="text-sm text-muted-foreground">
+                                      Parent story:{" "}
+                                      {
+                                        generatedStories.find(
+                                          (s) => s.id === story.parentTaskId
+                                        )?.title
                                       }
+                                    </div>
+                                  )}
+                                  <p className="text-sm text-muted-foreground">
+                                    As a{" "}
+                                    <span className="font-medium">
+                                      <Typewriter
+                                        words={[story.role]}
+                                        typeSpeed={30}
+                                        cursor={false}
+                                      />
+                                    </span>
+                                    , I want{" "}
+                                    <span className="font-medium">
+                                      <Typewriter
+                                        words={[story.want]}
+                                        typeSpeed={30}
+                                        cursor={false}
+                                      />
+                                    </span>
+                                    , so that{" "}
+                                    <span className="font-medium">
+                                      <Typewriter
+                                        words={[story.benefit]}
+                                        typeSpeed={30}
+                                        cursor={false}
+                                      />
+                                    </span>
+                                  </p>
+                                  <div className="mt-2">
+                                    <h4 className="text-sm font-semibold mb-1">
+                                      Acceptance Criteria:
+                                    </h4>
+                                    <ul className="list-disc list-inside text-sm space-y-1">
+                                      {story.acceptanceCriteria.map(
+                                        (criteria, index) => (
+                                          <li key={index}>{criteria}</li>
+                                        )
+                                      )}
+                                    </ul>
+                                  </div>
+                                  {story.requirements &&
+                                    story.requirements.length > 0 && (
+                                      <div className="mt-2">
+                                        <h4 className="text-sm font-semibold mb-1">
+                                          Requirements:
+                                        </h4>
+                                        <ul className="list-disc list-inside text-sm space-y-1">
+                                          {story.requirements.map(
+                                            (req, index) => (
+                                              <li key={index}>{req}</li>
+                                            )
+                                          )}
+                                        </ul>
+                                      </div>
                                     )}
+                                  {story.antiPatternWarnings &&
+                                    story.antiPatternWarnings.length > 0 && (
+                                      <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded">
+                                        <h4 className="text-sm font-semibold mb-1 text-yellow-800">
+                                          ⚠️ Anti-pattern Warnings:
+                                        </h4>
+                                        <ul className="list-disc list-inside text-sm space-y-1 text-yellow-700">
+                                          {story.antiPatternWarnings.map(
+                                            (warning, index) => (
+                                              <li key={index}>{warning}</li>
+                                            )
+                                          )}
+                                        </ul>
+                                      </div>
+                                    )}
+                                  {story.tags && story.tags.length > 0 && (
+                                    <div className="flex flex-wrap gap-2 mt-2">
+                                      {story.tags.map((tag, index) => (
+                                        <Badge
+                                          key={index}
+                                          variant="secondary"
+                                          className="text-xs"
+                                        >
+                                          {tag}
+                                        </Badge>
+                                      ))}
+                                    </div>
+                                  )}
+                                  {story.suggestedDependencies &&
+                                    story.suggestedDependencies.length > 0 && (
+                                      <div className="mt-4">
+                                        <h4 className="text-sm font-semibold mb-2">
+                                          Suggested Dependencies
+                                        </h4>
+                                        <hr className="my-2 workspace-border" />
+                                        <div className="space-y-2">
+                                          {story.suggestedDependencies.map(
+                                            (dep, index) => {
+                                              const dependentStory =
+                                                generatedStories.find(
+                                                  (s) => s.id === dep.taskId
+                                                );
+                                              if (!dependentStory) return null;
+                                              return (
+                                                <div
+                                                  key={index}
+                                                  className="p-2 workspace-component-bg rounded-lg text-sm"
+                                                >
+                                                  <div className="flex items-center justify-between">
+                                                    <span className="font-medium workspace-component-active-color">
+                                                      {dependentStory.title}
+                                                    </span>
+                                                    <Badge variant="workspace">
+                                                      {Math.round(
+                                                        dep.confidence * 100
+                                                      )}
+                                                      % confidence
+                                                    </Badge>
+                                                  </div>
+                                                  <p className="workspace-component-active-color mt-1 ">
+                                                    {dep.reason}
+                                                  </p>
+                                                </div>
+                                              );
+                                            }
+                                          )}
+                                        </div>
+                                      </div>
+                                    )}
+                                  <div className="flex items-center justify-end space-x-2 mt-4">
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() =>
+                                        handleManageDependencies(story)
+                                      }
+                                    >
+                                      <GitBranch className="h-4 w-4 mr-1" />
+                                      Manage Dependencies
+                                    </Button>
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => handleEditStory(story)}
+                                    >
+                                      <Pencil className="h-4 w-4 mr-1" />
+                                      Edit
+                                    </Button>
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() =>
+                                        handleDuplicateStory(story)
+                                      }
+                                    >
+                                      <Copy className="h-4 w-4 mr-1" />
+                                      Duplicate
+                                    </Button>
+                                    <Button
+                                      variant="destructive"
+                                      size="sm"
+                                      onClick={() =>
+                                        handleDeleteStory(story.id)
+                                      }
+                                    >
+                                      <X className="h-4 w-4 mr-1" />
+                                      Delete
+                                    </Button>
                                   </div>
                                 </div>
-                              )}
-                            <div className="flex items-center justify-end space-x-2 mt-4">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleManageDependencies(story)}
-                              >
-                                <GitBranch className="h-4 w-4 mr-1" />
-                                Manage Dependencies
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleEditStory(story)}
-                              >
-                                <Pencil className="h-4 w-4 mr-1" />
-                                Edit
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleDuplicateStory(story)}
-                              >
-                                <Copy className="h-4 w-4 mr-1" />
-                                Duplicate
-                              </Button>
-                              <Button
-                                variant="destructive"
-                                size="sm"
-                                onClick={() => handleDeleteStory(story.id)}
-                              >
-                                <X className="h-4 w-4 mr-1" />
-                                Delete
-                              </Button>
-                            </div>
-                          </div>
-                        </Card>
-                      ))}
-                    </div>
+                              </Card>
+                            </motion.div>
+                          ))}
+                      </div>
+                    </AnimatePresence>
                   ) : (
                     <div className="flex items-center justify-center h-full text-muted-foreground ">
                       <div className="text-xs text-center h-[calc(100vh-240px)] grid items-center">

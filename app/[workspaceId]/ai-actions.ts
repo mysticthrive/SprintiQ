@@ -199,27 +199,25 @@ export async function generateTAWOSStories(
       [
         {
           "title": "Concise story title",
+          "priority": "High",
+          "storyPoints": 5,
+          "estimatedTime": 16,
           "role": "specific user role",
           "want": "specific capability or feature",
           "benefit": "clear business or user benefit",
-          "acceptanceCriteria": ["specific, measurable criterion 1", "criterion 2", "criterion 3"],
-          "storyPoints": 5,
-          "businessValue": 4,
-          "priority": "High",
-          "tags": ["technical tag 1", "technical tag 2"],
-          "requirements": ["specific requirement 1", "requirement 2"],
-          "estimatedTime": 16,
           "description": "detailed description of the story",
+          "acceptanceCriteria": ["specific, measurable criterion 1", "criterion 2", "criterion 3"],
+          "requirements": ["specific requirement 1", "requirement 2"],
           "antiPatternWarnings": ["warning 1", "warning 2"],
+          "tags": ["technical tag 1", "technical tag 2"],
           "successPattern": "success pattern this story follows",
           "completionRate": 0.85
+          "businessValue": 4,
         }
       ]
       
       Ensure all JSON is properly formatted with no trailing commas and all strings are properly escaped.
     `;
-
-    console.log("Sending TAWOS-enhanced request to Claude API...");
 
     const message = await anthropic.messages.create({
       model: "claude-opus-4-20250514",
@@ -234,7 +232,6 @@ export async function generateTAWOSStories(
     });
 
     const text = message.content[0].text;
-    console.log("TAWOS-enhanced AI response received, length:", text.length);
 
     // Parse the JSON response with robust error handling
     let stories: UserStory[] = [];
@@ -245,10 +242,6 @@ export async function generateTAWOSStories(
 
       if (jsonMatch) {
         const jsonString = jsonMatch[0];
-        console.log(
-          "Attempting to parse JSON array, length:",
-          jsonString.length
-        );
 
         // Try multiple parsing strategies
         const parsingStrategies = [
