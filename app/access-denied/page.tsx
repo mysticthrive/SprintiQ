@@ -75,7 +75,7 @@ export default function AccessDeniedPage() {
               <p className="text-emerald-100/80 text-sm">
                 Need access?{" "}
                 <a
-                  href="mailto:support@sprintiq.ai"
+                  href="/contact"
                   className="text-emerald-400 hover:text-emerald-300 font-medium transition-colors duration-200 hover:underline"
                 >
                   Contact support

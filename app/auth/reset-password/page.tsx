@@ -26,7 +26,7 @@ export default function ResetPasswordPage() {
 
     try {
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/auth/update-password`,
+        redirectTo: `https://app.sprintiq.ai/auth/update-password`,
       });
 
       if (error) {

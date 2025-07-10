@@ -65,7 +65,7 @@ export default function AIAssistantSidebar({
     {
       role: "assistant",
       content:
-        "Hello! I'm your AI assistant, ready to help you boost productivity. I can create tasks, find similar items, generate user stories, and much more. What would you like to work on today?",
+        "Hi, My name is Turbo, your AI assistant!  I can create tasks, find similar items, generate user stories, and much more. What would you like to work on today?",
       timestamp: new Date(),
     },
   ]);

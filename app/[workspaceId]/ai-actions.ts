@@ -59,14 +59,6 @@ export async function generateTAWOSStories(
       useTAWOS = true,
     } = params;
 
-    console.log("Starting TAWOS story generation with params:", {
-      numberOfStories,
-      complexity,
-      hasTeamMembers: teamMembers.length > 0,
-      priorityWeights,
-      useTAWOS,
-    });
-
     let tawosPatterns: any[] = [];
     let antiPatterns: string[] = [];
     let storyTemplates: any[] = [];
@@ -142,6 +134,20 @@ export async function generateTAWOSStories(
     `
         : "";
 
+    // Prepare example stories from templates (if available)
+    const exampleStoriesSection =
+      storyTemplates.length > 0
+        ? `\nEXAMPLES OF SUCCESSFUL USER STORIES (JSON):\n${storyTemplates
+            .slice(0, 2)
+            .map((t, i) => `Example ${i + 1}:\n${JSON.stringify(t, null, 2)}`)
+            .join("\n\n")}\n`
+        : "";
+
+    console.log(
+      "exampleStoriesSection=============================",
+      exampleStoriesSection
+    );
+
     const prompt = `
       Generate ${numberOfStories} high-quality user stories for the following feature:
       
@@ -150,6 +156,8 @@ export async function generateTAWOSStories(
       ${tawosContext}
       
       ${teamContext}
+      
+      ${exampleStoriesSection}
       
       Complexity level: ${complexity}
       
@@ -346,17 +354,23 @@ export async function generateTAWOSStories(
 
       // If we still don't have stories, generate fallback stories
       if (stories.length === 0) {
-        console.log("No stories extracted, generating fallback stories");
-        stories = generateFallbackStories(params, numberOfStories);
+        if (storyTemplates.length > 0) {
+          // Use story templates as fallback if available
+          stories = storyTemplates.slice(0, numberOfStories);
+          console.log(`Used ${stories.length} story templates as fallback`);
+        } else {
+          console.log("No stories extracted, generating fallback stories");
+          stories = generateFallbackStories(params, numberOfStories);
+        }
       }
-
-      // Ensure we have the requested number of stories
+      // If we have fewer than requested, fill with templates if available
+      if (stories.length < numberOfStories && storyTemplates.length > 0) {
+        const needed = numberOfStories - stories.length;
+        stories.push(...storyTemplates.slice(0, needed));
+        console.log(`Added ${needed} story templates to fill missing stories`);
+      }
+      // If still not enough, use generic fallback
       if (stories.length < numberOfStories) {
-        console.log(
-          `Only got ${stories.length} stories, generating ${
-            numberOfStories - stories.length
-          } additional fallback stories`
-        );
         const additionalStories = generateFallbackStories(
           params,
           numberOfStories - stories.length
@@ -797,6 +811,41 @@ ${formattedAcceptanceCriteria}
     // Generate a task ID
     const taskId = `t${nanoid(12)}`;
 
+    // --- NEW: Build embedding input string ---
+    const embeddingInput = [
+      story.title,
+      description,
+      story.businessValue !== undefined
+        ? `Business Value: ${story.businessValue}`
+        : "",
+      story.estimatedTime !== undefined
+        ? `Estimated Time: ${story.estimatedTime}`
+        : "",
+      story.storyPoints !== undefined
+        ? `Story Points: ${story.storyPoints}`
+        : "",
+      story.antiPatternWarnings ? story.antiPatternWarnings.join("; ") : "",
+      story.requirements ? story.requirements.join("; ") : "",
+      story.tags ? story.tags.join(", ") : "",
+      story.risk !== undefined ? `Risk: ${story.risk}` : "",
+      story.dependencies ? story.dependencies.join(", ") : "",
+      story.complexity !== undefined ? `Complexity: ${story.complexity}` : "",
+      story.priority ? `Priority: ${story.priority}` : "",
+      (story as any).start_date
+        ? `Start Date: ${(story as any).start_date}`
+        : "",
+      (story as any).due_date ? `Due Date: ${(story as any).due_date}` : "",
+    ]
+      .filter(Boolean)
+      .join(" | ");
+
+    let embedding = null;
+    try {
+      embedding = await generateEmbedding(embeddingInput);
+    } catch (embeddingError) {
+      console.warn("Failed to generate embedding for story:", embeddingError);
+    }
+
     // Insert the story as a task
     const { error } = await supabase.from("tasks").insert({
       task_id: taskId,
@@ -806,8 +855,10 @@ ${formattedAcceptanceCriteria}
       priority: story.priority?.toLowerCase() || "medium",
       project_id: projectId,
       space_id: spaceId,
+      velocity: story.velocity,
       workspace_id: workspaceId,
       created_by: user.id,
+      embedding: embedding,
     });
 
     if (error) {
@@ -2123,6 +2174,41 @@ export async function saveUserStoryToDestination(
     // Use the story's ID as the task ID
     const taskId = story.id;
 
+    // --- NEW: Build embedding input string ---
+    const embeddingInput = [
+      story.title,
+      description,
+      story.businessValue !== undefined
+        ? `Business Value: ${story.businessValue}`
+        : "",
+      story.estimatedTime !== undefined
+        ? `Estimated Time: ${story.estimatedTime}`
+        : "",
+      story.storyPoints !== undefined
+        ? `Story Points: ${story.storyPoints}`
+        : "",
+      story.antiPatternWarnings ? story.antiPatternWarnings.join("; ") : "",
+      story.requirements ? story.requirements.join("; ") : "",
+      story.tags ? story.tags.join(", ") : "",
+      story.risk !== undefined ? `Risk: ${story.risk}` : "",
+      story.dependencies ? story.dependencies.join(", ") : "",
+      story.complexity !== undefined ? `Complexity: ${story.complexity}` : "",
+      story.priority ? `Priority: ${story.priority}` : "",
+      (story as any).start_date
+        ? `Start Date: ${(story as any).start_date}`
+        : "",
+      (story as any).due_date ? `Due Date: ${(story as any).due_date}` : "",
+    ]
+      .filter(Boolean)
+      .join(" | ");
+
+    let embedding = null;
+    try {
+      embedding = await generateEmbedding(embeddingInput);
+    } catch (embeddingError) {
+      console.warn("Failed to generate embedding for story:", embeddingError);
+    }
+
     // Prepare external data for TAWOS metadata
     const externalData = {
       tawos: {
@@ -2176,6 +2262,10 @@ export async function saveUserStoryToDestination(
         story_points: story.storyPoints ? Math.round(story.storyPoints) : null,
         business_value:
           priorityWeights?.businessValue || story.businessValue || null,
+        user_impact: priorityWeights?.userImpact,
+        complexity: priorityWeights?.complexity,
+        risk: priorityWeights?.risk,
+        dependency_score: story.dependencyScore,
         velocity: story.velocity ? Math.round(story.velocity) : null,
         assignee_id: assigneeId || null,
         project_id: project.id,
@@ -2186,6 +2276,7 @@ export async function saveUserStoryToDestination(
         external_data: externalData,
         pending_sync: false,
         sync_status: "synced",
+        embedding: embedding,
       })
       .select("id, task_id")
       .single();
