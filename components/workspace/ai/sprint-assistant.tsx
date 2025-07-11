@@ -45,33 +45,21 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Separator } from "@/components/ui/separator";
 import { Progress } from "@/components/ui/progress";
+
+import type { UserStory, TeamMember } from "@/types";
+import type { EnhancedSprint } from "@/lib/sprint-creation-service";
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import type { UserStory, TeamMember, Sprint } from "@/types";
-import type {
-  EnhancedSprint,
-  SprintMetrics,
-  RiskAssessment,
-  MitigationStrategy,
-  SprintDocumentation,
-  SprintRecommendation,
+  createEnhancedSprint,
+  calculateManualSprintAnalysis,
 } from "@/lib/sprint-creation-service";
-import { createEnhancedSprint } from "@/lib/sprint-creation-service";
 import { useEnhancedToast } from "@/hooks/use-enhanced-toast";
 import {
-  Accordion,
-  AccordionItem,
-  AccordionTrigger,
-  AccordionContent,
-} from "@/components/ui/accordion";
+  getPriorityColor,
+  getRiskColor,
+  getUtilizationColor,
+} from "@/lib/utils";
 
 interface SprintAssistantProps {
   stories: UserStory[];
@@ -87,6 +75,29 @@ interface ManualSprint {
   selectedStories: UserStory[];
   capacity: number;
   utilization: number;
+  goal?: string;
+  startDate?: string;
+  endDate?: string;
+}
+
+// Move this outside the component so it is available globally
+async function analyzeManualSprint(
+  sprint: ManualSprint,
+  teamMembers: TeamMember[]
+) {
+  const analyzed = await calculateManualSprintAnalysis(
+    sprint.selectedStories,
+    teamMembers,
+    {
+      name: sprint.name,
+      goal: sprint.goal || "",
+      startDate: sprint.startDate || "",
+      endDate: sprint.endDate || "",
+      duration: sprint.duration,
+      capacity: sprint.capacity,
+    }
+  );
+  return analyzed;
 }
 
 export default function SprintAssistant({
@@ -113,6 +124,21 @@ export default function SprintAssistant({
     null
   );
   const [showSprintDetails, setShowSprintDetails] = useState(false);
+  const [sprintGoal, setSprintGoal] = useState("");
+  const [sprintStartDate, setSprintStartDate] = useState<string>("");
+  const [selectedManualSprint, setSelectedManualSprint] =
+    useState<ManualSprint | null>(null);
+  const [showManualSprintDetails, setShowManualSprintDetails] = useState(false);
+
+  // Calculate end date based on start date and duration
+  const sprintEndDate = useMemo(() => {
+    if (!sprintStartDate) return "";
+    const start = new Date(sprintStartDate);
+    if (isNaN(start.getTime())) return "";
+    const end = new Date(start);
+    end.setDate(start.getDate() + sprintDuration * 7 - 1);
+    return end.toISOString().slice(0, 10);
+  }, [sprintStartDate, sprintDuration]);
 
   const { toast } = useEnhancedToast();
 
@@ -142,14 +168,12 @@ export default function SprintAssistant({
 
   // Calculate unselected stories
   const unselectedStories = useMemo(() => {
-    const selectedIds = new Set([
-      ...selectedStories,
-      ...manualSprints.flatMap((s) =>
-        s.selectedStories.map((story) => story.id)
-      ),
-    ]);
-    return stories.filter((story) => !selectedIds.has(story.id));
-  }, [stories, selectedStories, manualSprints]);
+    // Only exclude stories that are already assigned to a created sprint
+    const assignedIds = new Set(
+      manualSprints.flatMap((s) => s.selectedStories.map((story) => story.id))
+    );
+    return stories.filter((story) => !assignedIds.has(story.id));
+  }, [stories, manualSprints]);
 
   // Generate warnings and recommendations
   useEffect(() => {
@@ -211,6 +235,22 @@ export default function SprintAssistant({
       });
       return;
     }
+    if (!sprintGoal.trim()) {
+      toast({
+        title: "Sprint goal required",
+        description: "Please enter a goal for the sprint.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (!sprintStartDate) {
+      toast({
+        title: "Start date required",
+        description: "Please select a start date for the sprint.",
+        variant: "destructive",
+      });
+      return;
+    }
 
     const selectedStoryObjects = stories.filter((story) =>
       selectedStories.has(story.id)
@@ -238,11 +278,16 @@ export default function SprintAssistant({
       selectedStories: selectedStoryObjects,
       capacity: teamCapacity.totalStoryPoints,
       utilization,
+      goal: sprintGoal,
+      startDate: sprintStartDate,
+      endDate: sprintEndDate,
     };
 
     setManualSprints([...manualSprints, newSprint]);
     setSelectedStories(new Set());
     setSprintName("");
+    setSprintGoal("");
+    setSprintStartDate("");
     setShowManualModal(false);
 
     toast({
@@ -301,41 +346,6 @@ export default function SprintAssistant({
   const handleRemoveSprint = (sprintId: string) => {
     setManualSprints(manualSprints.filter((s) => s.id !== sprintId));
   };
-
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case "Critical":
-        return "bg-red-500";
-      case "High":
-        return "bg-orange-500";
-      case "Medium":
-        return "bg-blue-500";
-      case "Low":
-        return "bg-green-500";
-      default:
-        return "bg-gray-500";
-    }
-  };
-
-  const getUtilizationColor = (utilization: number) => {
-    if (utilization > 100) return "text-red-600";
-    if (utilization > 90) return "text-orange-600";
-    if (utilization > 70) return "text-green-600";
-    return "text-blue-600";
-  };
-
-  function getRiskColor(riskLevel: string) {
-    switch (riskLevel) {
-      case "High":
-        return "text-red-600 bg-red-50";
-      case "Medium":
-        return "text-yellow-600 bg-yellow-50";
-      case "Low":
-        return "text-green-600 bg-green-50";
-      default:
-        return "text-gray-600 bg-gray-50";
-    }
-  }
 
   return (
     <Dialog open onOpenChange={onClose}>
@@ -500,13 +510,25 @@ export default function SprintAssistant({
                             </Badge>
                           ))}
                         </div>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleRemoveSprint(sprint.id)}
-                        >
-                          Remove Sprint
-                        </Button>
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleRemoveSprint(sprint.id)}
+                          >
+                            Remove Sprint
+                          </Button>
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => {
+                              setSelectedManualSprint(sprint);
+                              setShowManualSprintDetails(true);
+                            }}
+                          >
+                            View Analysis
+                          </Button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -1006,6 +1028,42 @@ export default function SprintAssistant({
                 </div>
               </div>
 
+              {/* Sprint Goal */}
+              <div className="flex items-center gap-2">
+                <Label htmlFor="sprint-goal">Sprint Goal:</Label>
+                <Input
+                  id="sprint-goal"
+                  value={sprintGoal}
+                  onChange={(e) => setSprintGoal(e.target.value)}
+                  placeholder="Enter sprint goal"
+                  className="w-80"
+                />
+              </div>
+
+              {/* Start Date and End Date */}
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="sprint-start-date">Start Date:</Label>
+                  <Input
+                    id="sprint-start-date"
+                    type="date"
+                    value={sprintStartDate}
+                    onChange={(e) => setSprintStartDate(e.target.value)}
+                    className="w-44"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="sprint-end-date">End Date:</Label>
+                  <Input
+                    id="sprint-end-date"
+                    type="date"
+                    value={sprintEndDate}
+                    disabled
+                    className="w-44 bg-muted"
+                  />
+                </div>
+              </div>
+
               <div className="flex justify-between items-center">
                 <div>
                   <p className="text-sm text-muted-foreground">
@@ -1487,6 +1545,28 @@ export default function SprintAssistant({
             )}
           </DialogContent>
         </Dialog>
+
+        {/* Manual Sprint Detailed Analysis Modal */}
+        <Dialog
+          open={showManualSprintDetails}
+          onOpenChange={setShowManualSprintDetails}
+        >
+          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <BarChart3 className="h-5 w-5" />
+                {selectedManualSprint?.name} - Detailed Analysis
+              </DialogTitle>
+            </DialogHeader>
+            {selectedManualSprint && (
+              <ManualSprintAnalysisContent
+                sprint={selectedManualSprint}
+                teamMembers={teamMembers}
+                onClose={() => setShowManualSprintDetails(false)}
+              />
+            )}
+          </DialogContent>
+        </Dialog>
       </DialogContent>
     </Dialog>
   );
@@ -1520,4 +1600,429 @@ function priorityBadgeColor(priority: string | undefined) {
     default:
       return "bg-gray-100 text-gray-700 dark:bg-gray-900 dark:text-gray-200";
   }
+}
+
+// Add this new component at the end of the file
+function ManualSprintAnalysisContent({
+  sprint,
+  teamMembers,
+  onClose,
+}: {
+  sprint: ManualSprint;
+  teamMembers: TeamMember[];
+  onClose: () => void;
+}) {
+  const [analyzed, setAnalyzed] = useState<null | EnhancedSprint>(null);
+  const [loading, setLoading] = useState(false);
+  useEffect(() => {
+    setLoading(true);
+    analyzeManualSprint(sprint, teamMembers).then((result: EnhancedSprint) => {
+      setAnalyzed(result);
+      setLoading(false);
+    });
+  }, [sprint, teamMembers]);
+  if (loading || !analyzed)
+    return (
+      <div className="p-8 text-center text-muted-foreground">
+        Analyzing sprint...
+      </div>
+    );
+  return (
+    <Tabs defaultValue="overview" className="w-full">
+      <TabsList className="grid w-full grid-cols-5">
+        <TabsTrigger value="overview">
+          <Info className="h-4 w-4 mr-1" />
+          Overview
+        </TabsTrigger>
+        <TabsTrigger value="stories">
+          <FileText className="h-4 w-4 mr-1" />
+          Stories
+        </TabsTrigger>
+        <TabsTrigger value="risks">
+          <Shield className="h-4 w-4 mr-1" />
+          Risks
+        </TabsTrigger>
+        <TabsTrigger value="metrics">
+          <BarChart3 className="h-4 w-4 mr-1" />
+          Metrics
+        </TabsTrigger>
+        <TabsTrigger value="docs">
+          <FileText className="h-4 w-4 mr-1" />
+          Docs
+        </TabsTrigger>
+      </TabsList>
+      <TabsContent value="overview" className="space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Card>
+            <CardHeader className="p-3">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Target className="h-4 w-4" />
+                Sprint Goal
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-3">
+              <p className="text-sm">{analyzed.goal}</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="p-3">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Calendar className="h-4 w-4" />
+                Timeline
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-3">
+              <div className="text-sm space-y-1">
+                <div>Start: {analyzed.documentation.keyDates.startDate}</div>
+                <div>End: {analyzed.documentation.keyDates.endDate}</div>
+                <div>Duration: {analyzed.duration} weeks</div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+        <Card>
+          <CardHeader className="p-3">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Lightbulb className="h-4 w-4" />
+              Key Recommendations
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-3">
+            <div className="space-y-2">
+              {analyzed.recommendations.map((rec, index) => (
+                <div
+                  key={index}
+                  className="flex items-start gap-2 p-2 bg-muted rounded"
+                >
+                  <div
+                    className={`w-2 h-2 rounded-full mt-2 ${
+                      rec.priority === "critical"
+                        ? "bg-red-500"
+                        : rec.priority === "high"
+                        ? "bg-orange-500"
+                        : rec.priority === "medium"
+                        ? "bg-yellow-500"
+                        : "bg-green-500"
+                    }`}
+                  />
+                  <div className="flex-1">
+                    <div className="font-medium text-sm">{rec.message}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {rec.action}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </TabsContent>
+      <TabsContent value="stories" className="space-y-4">
+        <div className="space-y-2">
+          {analyzed.stories.map((story) => (
+            <div key={story.id} className="border rounded p-3">
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="font-medium">{story.title}</h4>
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline">{story.storyPoints} pts</Badge>
+                  <Badge
+                    className={getPriorityColor(story.priority || "medium")}
+                  >
+                    {story.priority}
+                  </Badge>
+                </div>
+              </div>
+              <p className="text-sm text-muted-foreground mb-2">
+                {story.description}
+              </p>
+              <div className="flex items-center gap-4 text-xs">
+                <span>Business Value: {story.businessValue}</span>
+                <span>Complexity: {story.complexity}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </TabsContent>
+      <TabsContent value="risks" className="space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Card>
+            <CardHeader className="p-3">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Shield className="h-4 w-4" />
+                Risk Assessment
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-3">
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm">Overall Risk:</span>
+                  <Badge
+                    className={getRiskColor(analyzed.riskAssessment.riskLevel)}
+                  >
+                    {analyzed.riskAssessment.riskLevel.toUpperCase()}
+                  </Badge>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm">Risk Score:</span>
+                  <span className="font-medium">
+                    {analyzed.riskAssessment.riskScore}/5
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm">Confidence:</span>
+                  <span className="font-medium">
+                    {Math.round(analyzed.riskAssessment.confidence * 100)}%
+                  </span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="p-3">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4" />
+                Risk Factors
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-3">
+              <div className="space-y-2">
+                {Object.entries(analyzed.riskAssessment.riskFactors).map(
+                  ([factor, value]) => (
+                    <div
+                      key={factor}
+                      className="flex items-center justify-between"
+                    >
+                      <span className="text-sm capitalize">
+                        {factor.replace(/([A-Z])/g, " $1").trim()}:
+                      </span>
+                      <span className="font-medium">{value}</span>
+                    </div>
+                  )
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+        <Card>
+          <CardHeader className="p-3">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <CheckCircle className="h-4 w-4" />
+              Mitigation Strategies
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-3">
+            <div className="space-y-2">
+              {analyzed.mitigationStrategies.map((strategy, index) => (
+                <div
+                  key={index}
+                  className="flex items-start gap-2 p-2 bg-muted rounded"
+                >
+                  <div
+                    className={`w-2 h-2 rounded-full mt-2 ${
+                      strategy.priority === "critical"
+                        ? "bg-red-500"
+                        : strategy.priority === "high"
+                        ? "bg-orange-500"
+                        : strategy.priority === "medium"
+                        ? "bg-yellow-500"
+                        : "bg-green-500"
+                    }`}
+                  />
+                  <div className="flex-1">
+                    <div className="font-medium text-sm">
+                      {strategy.description}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      Action: {strategy.action}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      Effort: {strategy.effort}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </TabsContent>
+      <TabsContent value="metrics" className="space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Card>
+            <CardHeader className="p-3">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Activity className="h-4 w-4" />
+                Capacity Metrics
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-3">
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm">Story Count:</span>
+                  <span className="font-medium">
+                    {analyzed.metrics.storyCount}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm">Total Story Points:</span>
+                  <span className="font-medium">
+                    {analyzed.metrics.totalStoryPoints}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm">Total Hours:</span>
+                  <span className="font-medium">
+                    {analyzed.metrics.totalHours}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm">Story Points Utilization:</span>
+                  <span
+                    className={`font-medium ${getUtilizationColor(
+                      analyzed.metrics.utilization.storyPoints
+                    )}`}
+                  >
+                    {Math.round(analyzed.metrics.utilization.storyPoints)}%
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm">Hours Utilization:</span>
+                  <span
+                    className={`font-medium ${getUtilizationColor(
+                      analyzed.metrics.utilization.hours
+                    )}`}
+                  >
+                    {Math.round(analyzed.metrics.utilization.hours)}%
+                  </span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="p-3">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <BarChart3 className="h-4 w-4" />
+                Priority Distribution
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-3">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm">Critical:</span>
+                  <span className="font-medium">
+                    {analyzed.metrics.priorityDistribution.critical}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm">High:</span>
+                  <span className="font-medium">
+                    {analyzed.metrics.priorityDistribution.high}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm">Medium:</span>
+                  <span className="font-medium">
+                    {analyzed.metrics.priorityDistribution.medium}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm">Low:</span>
+                  <span className="font-medium">
+                    {analyzed.metrics.priorityDistribution.low}
+                  </span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+        <Card>
+          <CardHeader className="p-3">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <TrendingUp className="h-4 w-4" />
+              Quality Metrics
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm">Avg Business Value:</span>
+                  <span className="font-medium">
+                    {analyzed.metrics.avgBusinessValue}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm">Avg Complexity:</span>
+                  <span className="font-medium">
+                    {analyzed.metrics.avgComplexity}
+                  </span>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm">Over Capacity:</span>
+                  <span className="font-medium">
+                    {analyzed.metrics.isOverCapacity ? (
+                      <XCircle className="h-4 w-4 text-red-500" />
+                    ) : (
+                      <CheckCircle2 className="h-4 w-4 text-green-500" />
+                    )}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </TabsContent>
+      <TabsContent value="docs" className="space-y-4">
+        <Card>
+          <CardHeader className="p-3">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <FileText className="h-4 w-4" />
+              Sprint Documentation
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-3">
+            <div className="space-y-4">
+              <div>
+                <h4 className="font-medium mb-2">Overview</h4>
+                <p className="text-sm text-muted-foreground">
+                  {analyzed.documentation.overview}
+                </p>
+              </div>
+              <div>
+                <h4 className="font-medium mb-2">Objectives</h4>
+                <ul className="text-sm text-muted-foreground space-y-1">
+                  {analyzed.documentation.objectives.map((objective, index) => (
+                    <li key={index} className="flex items-start gap-2">
+                      <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-2 flex-shrink-0" />
+                      {objective}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div>
+                <h4 className="font-medium mb-2">Success Criteria</h4>
+                <ul className="text-sm text-muted-foreground space-y-1">
+                  {analyzed.documentation.success_criteria.map(
+                    (criterion, index) => (
+                      <li key={index} className="flex items-start gap-2">
+                        <CheckCircle2 className="h-3 w-3 text-green-500 mt-0.5 flex-shrink-0" />
+                        {criterion}
+                      </li>
+                    )
+                  )}
+                </ul>
+              </div>
+              <div>
+                <h4 className="font-medium mb-2">Risk Summary</h4>
+                <p className="text-sm text-muted-foreground">
+                  {analyzed.documentation.riskSummary}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </TabsContent>
+    </Tabs>
+  );
 }

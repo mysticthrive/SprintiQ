@@ -134,7 +134,7 @@ export class SprintCreationService {
       },
 
       // AI Model Configuration
-      aiModel: "claude-3-sonnet-20240229",
+      aiModel: "claude-opus-4-20250514",
       maxRetries: 3,
 
       ...config,
@@ -437,18 +437,18 @@ export class SprintCreationService {
   }
 
   /**
-   * Calculate team capacity for 2-week sprints
+   * Calculate team capacity for a sprint, scaling by sprint duration (in days)
    */
   private calculateSprintCapacity(
     teamCapacity: any,
     teamMembers: TeamMember[]
   ) {
-    // Use velocity (story points per sprint) as the only measure
-    // If you want to use a velocity buffer, keep it, but do not convert to hours
+    // Use hours per week, sprint duration, and 8 hours per story point
+    const sprintDurationWeeks = this.config.sprintDuration / 7;
     let totalStoryPoints = 0;
     const memberCapacities = teamMembers.map((member) => {
-      // Assume each member can do 10 points per sprint by default, or use a provided velocity
-      const memberPoints = member.velocity || 10;
+      const weeklyHours = member.availability || 40;
+      const memberPoints = (weeklyHours * sprintDurationWeeks) / 8;
       const adjustedPoints = Math.floor(
         memberPoints * this.config.velocityBuffer
       );
@@ -459,6 +459,9 @@ export class SprintCreationService {
         role: member.role,
         skills: member.skills || [],
         velocity: member.velocity || 10,
+        weeklyHours,
+        sprintWeeks: sprintDurationWeeks,
+        memberPoints,
         adjustedPoints,
       };
     });
@@ -467,7 +470,6 @@ export class SprintCreationService {
       (sum, member) => sum + (member.availability || 40),
       0
     );
-    const sprintDurationWeeks = this.config.sprintDuration / 7;
     const totalHours = totalWeeklyHours * sprintDurationWeeks;
     return {
       totalHours,
@@ -1553,4 +1555,89 @@ export async function createEnhancedSprint(
   }
 
   return enhancedSprints;
+}
+
+/**
+ * Calculate an EnhancedSprint for a manual sprint using the same logic as AI sprints,
+ * but with user-provided goal, startDate, endDate, duration, and name.
+ */
+export async function calculateManualSprintAnalysis(
+  stories: UserStory[],
+  teamMembers: TeamMember[],
+  manualSprint: {
+    name: string;
+    goal: string;
+    startDate: string;
+    endDate: string;
+    duration: number;
+    capacity: number;
+  },
+  config?: Partial<SprintCreationConfig>
+): Promise<EnhancedSprint> {
+  const service = new SprintCreationService(config);
+
+  // Calculate team capacity for metrics
+  const sprintCapacity = {
+    totalStoryPoints: manualSprint.capacity,
+    totalHours:
+      teamMembers.reduce((sum, m) => sum + (m.availability || 40), 0) *
+      manualSprint.duration,
+    memberCapacities: teamMembers.map((member) => ({
+      ...member,
+      weeklyHours: member.availability || 40,
+      sprintHours: (member.availability || 40) * manualSprint.duration,
+      sprintPoints: Math.floor(
+        ((member.availability || 40) * manualSprint.duration) / 8
+      ),
+    })),
+    velocityBuffer: config?.velocityBuffer || 1,
+  };
+
+  // Calculate metrics
+  const metrics = service["calculateSprintMetrics"](stories, sprintCapacity);
+
+  // Build a minimal EnhancedSprint object for risk calculation
+  const sprintObj: EnhancedSprint = {
+    id: `manual-sprint-${Date.now()}`,
+    name: manualSprint.name,
+    goal: manualSprint.goal,
+    startDate: new Date(manualSprint.startDate),
+    endDate: new Date(manualSprint.endDate),
+    duration: manualSprint.duration,
+    capacity: manualSprint.capacity,
+    stories,
+    teamMembers,
+    velocity: sprintCapacity.totalStoryPoints,
+    status: "Planning",
+    metrics,
+    riskAssessment: {} as RiskAssessment,
+    mitigationStrategies: [],
+    documentation: {} as SprintDocumentation,
+    recommendations: [],
+    generated: {
+      timestamp: new Date().toISOString(),
+      version: "1.0",
+      agent: "SprintIQ.ai Manual Sprint Analysis",
+    },
+  };
+
+  // Calculate risk assessment
+  sprintObj.riskAssessment = await service["calculateSprintRisk"](
+    sprintObj,
+    stories
+  );
+  // Mitigation strategies
+  sprintObj.mitigationStrategies = await service[
+    "generateMitigationStrategies"
+  ](sprintObj, sprintObj.riskAssessment);
+  // Documentation
+  sprintObj.documentation = await service["generateSprintDocs"](sprintObj, {
+    startDate: manualSprint.startDate,
+  });
+  // Recommendations
+  sprintObj.recommendations = await service["generateSprintRecommendations"](
+    sprintObj
+  );
+
+  return sprintObj;
 }

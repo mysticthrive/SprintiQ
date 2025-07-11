@@ -59,6 +59,26 @@ export const getPriorityColor = (priority?: string) => {
   }
 };
 
+export const getUtilizationColor = (utilization: number) => {
+  if (utilization > 100) return "text-red-600";
+  if (utilization > 90) return "text-orange-600";
+  if (utilization > 70) return "text-green-600";
+  return "text-blue-600";
+};
+
+export const getRiskColor = (riskLevel: string) => {
+  switch (riskLevel) {
+    case "High":
+      return "text-red-600 bg-red-50";
+    case "Medium":
+      return "text-yellow-600 bg-yellow-50";
+    case "Low":
+      return "text-green-600 bg-green-50";
+    default:
+      return "text-gray-600 bg-gray-50";
+  }
+};
+
 export const getStatusTypeColor = (statusType: string) => {
   switch (statusType) {
     case "not-started":
