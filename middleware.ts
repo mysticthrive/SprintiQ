@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { createMiddlewareSupabaseClient } from "@/lib/supabase/server";
-import { isEmailAllowedServer } from "@/lib/auth-utils-server";
 
 // List of public routes that don't require authentication
 const publicRoutes = [
@@ -58,8 +57,12 @@ export async function middleware(request: NextRequest) {
 
   // Check if user's email is authorized
   if (session.user?.email) {
-    const isAllowed = await isEmailAllowedServer(session.user.email);
-    if (!isAllowed) {
+    const { data: userRecord, error: userError } = await supabase
+      .from("users")
+      .select("allowed")
+      .eq("email", session.user.email.toLowerCase().trim())
+      .maybeSingle();
+    if (userError || !userRecord || userRecord.allowed === false) {
       // Sign out the user and redirect to access denied
       await supabase.auth.signOut();
       return NextResponse.redirect(new URL("/access-denied", request.url));

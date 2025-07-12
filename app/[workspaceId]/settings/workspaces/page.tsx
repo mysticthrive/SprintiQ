@@ -54,6 +54,14 @@ import {
 import { format } from "date-fns";
 import type { Workspace } from "@/lib/database.types";
 import CreateWorkspaceModal from "@/components/workspace/modals/create-workspace-modal";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 
 interface WorkspaceWithStats extends Workspace {
   memberCount: number;
@@ -107,6 +115,16 @@ export default function WorkspacesPage() {
     type: "",
     category: "",
   });
+
+  // Edit modal state
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [workspaceToEdit, setWorkspaceToEdit] =
+    useState<WorkspaceWithStats | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editLoading, setEditLoading] = useState(false);
+
+  // Delete (clear owner) state
+  const [deleteLoadingId, setDeleteLoadingId] = useState<string | null>(null);
 
   const fetchWorkspaces = async () => {
     if (!user) return;
@@ -432,6 +450,59 @@ export default function WorkspacesPage() {
     }
   };
 
+  // Edit handler
+  const openEditModal = (workspace: WorkspaceWithStats) => {
+    setWorkspaceToEdit(workspace);
+    setEditName(workspace.name);
+    setEditModalOpen(true);
+  };
+
+  const handleEditSubmit = async () => {
+    if (!workspaceToEdit) return;
+    setEditLoading(true);
+    try {
+      const { error } = await supabase
+        .from("workspaces")
+        .update({ name: editName })
+        .eq("id", workspaceToEdit.id);
+      if (error) throw error;
+      toast({ title: "Success", description: "Workspace name updated." });
+      setEditModalOpen(false);
+      setWorkspaceToEdit(null);
+      fetchWorkspaces();
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update name",
+        variant: "destructive",
+      });
+    } finally {
+      setEditLoading(false);
+    }
+  };
+
+  // Delete (clear owner_id) handler
+  const handleClearOwner = async (workspace: WorkspaceWithStats) => {
+    setDeleteLoadingId(workspace.id);
+    try {
+      const { error } = await supabase
+        .from("workspaces")
+        .update({ owner_id: null })
+        .eq("id", workspace.id);
+      if (error) throw error;
+      toast({ title: "Success", description: "Workspace owner removed." });
+      fetchWorkspaces();
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to remove owner",
+        variant: "destructive",
+      });
+    } finally {
+      setDeleteLoadingId(null);
+    }
+  };
+
   useEffect(() => {
     fetchWorkspaces();
   }, [user]);
@@ -670,19 +741,28 @@ export default function WorkspacesPage() {
                                     ? "Current Workspace"
                                     : "Switch to Workspace"}
                                 </DropdownMenuItem>
-                                <DropdownMenuItem className="cursor-pointer hover:workspace-hover">
-                                  <Settings className="h-4 w-4 mr-2" />
-                                  Settings
-                                </DropdownMenuItem>
                                 {workspace.isOwner && (
                                   <>
-                                    <DropdownMenuItem className="cursor-pointer hover:workspace-hover">
+                                    <DropdownMenuItem
+                                      className="cursor-pointer hover:workspace-hover"
+                                      onClick={() => openEditModal(workspace)}
+                                    >
                                       <Pencil className="h-4 w-4 mr-2" />
                                       Edit
                                     </DropdownMenuItem>
-                                    <DropdownMenuItem className="text-red-600 cursor-pointer hover:workspace-hover">
+                                    <DropdownMenuItem
+                                      className="text-red-600 cursor-pointer hover:workspace-hover"
+                                      onClick={() =>
+                                        handleClearOwner(workspace)
+                                      }
+                                      disabled={
+                                        deleteLoadingId === workspace.id
+                                      }
+                                    >
                                       <Trash2 className="h-4 w-4 mr-2" />
-                                      Delete
+                                      {deleteLoadingId === workspace.id
+                                        ? "Removing..."
+                                        : "Delete"}
                                     </DropdownMenuItem>
                                   </>
                                 )}
@@ -787,6 +867,33 @@ export default function WorkspacesPage() {
         isCreateModalOpen={createModalOpen}
         setIsCreateModalOpen={setCreateModalOpen}
       />
+      {/* Edit Workspace Name Modal */}
+      <Dialog open={editModalOpen} onOpenChange={setEditModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Workspace Name</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <Input
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+              placeholder="Workspace name"
+              disabled={editLoading}
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              onClick={handleEditSubmit}
+              disabled={editLoading || !editName.trim()}
+            >
+              {editLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : null}
+              Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

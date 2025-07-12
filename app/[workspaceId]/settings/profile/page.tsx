@@ -7,10 +7,10 @@ import { SettingsProfileView } from "@/components/settings/profile";
 export default async function ProfileSettingsPage({
   params,
 }: {
-  params: { workspaceId: string };
+  params: Promise<{ workspaceId: string }>;
 }) {
   const supabase = await createServerSupabaseClient();
-  const workspaceId = params.workspaceId;
+  const { workspaceId } = await params;
 
   const {
     data: { user },

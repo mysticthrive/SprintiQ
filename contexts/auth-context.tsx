@@ -6,7 +6,7 @@ import { createContext, useContext, useEffect, useState } from "react";
 import { createClientSupabaseClient } from "@/lib/supabase/client";
 import type { User, Session } from "@supabase/supabase-js";
 import { useRouter } from "next/navigation";
-import { isEmailAllowed } from "@/lib/auth-utils";
+// REMOVE: import { isEmailAllowed } from "@/lib/auth-utils";
 
 type AuthContextType = {
   user: User | null;
@@ -68,33 +68,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [router, supabase.auth]);
 
   const signIn = async (email: string, password: string) => {
-    // Check if email is allowed before proceeding with sign in
-    const isAllowed = await isEmailAllowed(email);
-    console.log(
-      `Sign in attempt for ${email}: ${isAllowed ? "ALLOWED" : "DENIED"}`
-    );
-
-    if (!isAllowed) {
-      console.log(
-        `Access denied for ${email}, redirecting to access-denied page`
-      );
+    // Check if user is allowed in users table
+    const { data: userRecord, error: userError } = await supabase
+      .from("users")
+      .select("allowed")
+      .eq("email", email.toLowerCase().trim())
+      .maybeSingle();
+    if (userError || !userRecord || userRecord.allowed === false) {
       router.push("/access-denied");
       return {
-        error: { message: "Access denied. Your email is not authorized." },
+        error: { message: "Access denied. Your account is not yet allowed." },
         data: null,
       };
     }
-
-    console.log(`Email ${email} is allowed, proceeding with sign in`);
     const result = await supabase.auth.signInWithPassword({
       email,
       password,
     });
-
     if (!result.error && result.data.session) {
       router.push("/dashboard");
     }
-
     return result;
   };
 
@@ -103,24 +96,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     password: string,
     metadata?: { full_name?: string; company?: string }
   ) => {
-    // Check if email is allowed before proceeding with sign up
-    const isAllowed = await isEmailAllowed(email);
-    console.log(
-      `Sign up attempt for ${email}: ${isAllowed ? "ALLOWED" : "DENIED"}`
-    );
-
-    if (!isAllowed) {
-      console.log(
-        `Access denied for ${email}, redirecting to access-denied page`
-      );
-      router.push("/access-denied");
-      return {
-        error: { message: "Access denied. Your email is not authorized." },
-        data: null,
-      };
-    }
-
-    console.log(`Email ${email} is allowed, proceeding with sign up`);
     const result = await supabase.auth.signUp({
       email,
       password,
@@ -129,9 +104,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         emailRedirectTo: `${window.location.origin}/auth/callback`,
       },
     });
-
     if (!result.error && result.data.user) {
-      // Create profile in profiles table
+      // Insert into users table with allowed: false
+      await supabase.from("users").insert({
+        id: result.data.user.id, // <-- set to Supabase Auth user id
+        name: metadata?.full_name || "",
+        email: email.toLowerCase().trim(),
+        allowed: false,
+        company: metadata?.company || "",
+      });
+      // Optionally, also create profile in profiles table if needed
       if (metadata) {
         await supabase.from("profiles").insert({
           id: result.data.user.id,
@@ -140,10 +122,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           company: metadata.company,
         });
       }
-
-      router.push("/auth/verify");
+      // Always redirect to access denied after signup
+      router.push("/access-denied");
     }
-
     return result;
   };
 

@@ -37,15 +37,6 @@ export const PieChartColors: { name: Color; hex: string; label: string }[] = [
   { name: "purple", hex: "#8B5CF6", label: "Purple" },
 ];
 
-export const timezones = [
-  "America/New_York", // US/Eastern
-  "America/Los_Angeles", // US/Pacific
-  "Europe/London",
-  "Europe/Warsaw",
-  "Asia/Tokyo",
-  "Australia/Sydney",
-];
-
 // Enhanced UserStory interface with TAWOS features
 export interface UserStory {
   id: string;
@@ -81,6 +72,8 @@ export interface UserStory {
   dependencyScore?: number;
   estimatedHours?: number;
   calculatedAt?: string;
+  sprintId?: string;
+  goal?: string;
 }
 
 // Team member interface

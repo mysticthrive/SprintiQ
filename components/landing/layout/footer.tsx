@@ -1,8 +1,9 @@
 import Link from "next/link";
 import Image from "next/image";
 import { useState } from "react";
-import { Linkedin, Github, Instagram, Facebook } from "lucide-react";
+import { Linkedin, Instagram, Facebook } from "lucide-react";
 import { TwitterSvg } from "@/components/svg/TwitterSvg";
+import { MediumSvg } from "@/components/svg/MediumSvg";
 
 export default function Footer() {
   const [twitterColor, setTwitterColor] = useState("#BDBDBD");
@@ -60,7 +61,7 @@ export default function Footer() {
                 <h3 className="text-white font-semibold mb-2">Social</h3>
                 <div className="flex space-x-4">
                   <a
-                    href="#"
+                    href="https://x.com/SprintiQAI"
                     className="text-gray-400 hover:text-white hover:scale-110 duration-300 transition-all"
                     onMouseEnter={() => setTwitterColor("#fff")}
                     onMouseLeave={() => setTwitterColor("#BDBDBD")}
@@ -71,32 +72,34 @@ export default function Footer() {
                     <span className="sr-only">Twitter</span>
                   </a>
                   <a
-                    href="#"
+                    href="https://www.linkedin.com/company/sprintiq-ai"
                     className="text-gray-400 hover:text-white hover:scale-110 duration-300 transition-all"
                   >
                     <Linkedin size={18} />
                     <span className="sr-only">LinkedIn</span>
                   </a>
                   <a
-                    href="#"
+                    href="https://www.facebook.com/SprintiQ/"
                     className="text-gray-400 hover:text-white hover:scale-110 duration-300 transition-all"
                   >
                     <Facebook size={18} />
                     <span className="sr-only">Facebook</span>
                   </a>
                   <a
-                    href="#"
+                    href="https://www.instagram.com/sprintiq.ai/"
                     className="text-gray-400 hover:text-white hover:scale-110 duration-300 transition-all"
                   >
                     <Instagram size={18} />
                     <span className="sr-only">Instagram</span>
                   </a>
                   <a
-                    href="#"
+                    href="https://sprintiq.medium.com"
                     className="text-gray-400 hover:text-white hover:scale-110 duration-300 transition-all"
                   >
-                    <Github size={18} />
-                    <span className="sr-only">GitHub</span>
+                    <div className="w-5 h-5">
+                      <MediumSvg color={twitterColor} />
+                    </div>
+                    <span className="sr-only">Medium</span>
                   </a>
                 </div>
               </div>

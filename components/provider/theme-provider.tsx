@@ -18,17 +18,19 @@ type Color =
   | "cyan"
   | "brown"
   | "green"
-  | "purple";
+  | "purple"
+  | "yellow";
 
 interface CustomThemeProviderProps extends ThemeProviderProps {
   children: React.ReactNode;
 }
 
 interface ThemeContextType {
-  theme: Theme | undefined;
+  theme: Theme | undefined; // user's selection
   setTheme: (theme: Theme) => void;
   color: Color;
   setColor: (color: Color) => void;
+  resolvedTheme: Theme | undefined; // add this
 }
 
 const ThemeContext = React.createContext<ThemeContextType | undefined>(
@@ -100,10 +102,11 @@ function InternalThemeProviderContent({
   return (
     <ThemeContext.Provider
       value={{
-        theme: resolvedTheme as Theme,
+        theme: theme as Theme, // user's selection
         setTheme: setTheme as (theme: Theme) => void,
         color,
         setColor: handleSetColor,
+        resolvedTheme: resolvedTheme as Theme, // add this line
       }}
     >
       {children}

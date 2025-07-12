@@ -2,6 +2,7 @@
 // Comprehensive algorithm for creating detailed 2-week sprints with AI-powered optimization
 
 import type { UserStory, TeamMember, Sprint } from "@/types";
+import { nanoid } from "nanoid";
 
 export interface SprintCreationConfig {
   // Sprint Configuration
@@ -1508,9 +1509,7 @@ export class SprintCreationService {
    * Generate unique ID
    */
   private generateUniqueId(): string {
-    return (
-      "sprint_" + Date.now() + "_" + Math.random().toString(36).substr(2, 9)
-    );
+    return `st${nanoid(6)}`;
   }
 
   // Utility: For each story, set childTaskIds to the array of ids of stories whose parentTaskId matches this story's id

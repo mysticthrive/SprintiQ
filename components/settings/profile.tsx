@@ -6,7 +6,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@radix-ui/react-dropdown-menu";
+} from "@/components/ui/dropdown-menu";
 import {
   Upload,
   User,
@@ -38,11 +38,12 @@ import {
 } from "@/components/ui/dialog";
 
 import { cn, getAvatarInitials } from "@/lib/utils";
-import { ThemeColors, timezones } from "@/types";
+import { ThemeColors } from "@/types";
 import { Profile } from "@/lib/database.types";
 import { updateProfile } from "@/app/[workspaceId]/settings/profile/actions";
 import { Slider } from "@/components/ui/slider";
 import SettingsProfileViewLoading from "@/app/[workspaceId]/settings/profile/loading";
+import { ScrollArea } from "../ui/scroll-area";
 
 interface ProfileFormProps {
   profile: Profile | null;
@@ -58,9 +59,6 @@ export function SettingsProfileView({ profile, email }: ProfileFormProps) {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [language, setLanguage] = useState(profile?.language ?? "English");
-  const [timezone, setTimezone] = useState(
-    profile?.timezone ?? "America/New_York"
-  );
   const [startOfWeek, setStartOfWeek] = useState(
     profile?.start_of_week || "Sunday"
   );
@@ -152,6 +150,22 @@ export function SettingsProfileView({ profile, email }: ProfileFormProps) {
   const [croppedImageBlob, setCroppedImageBlob] = useState<Blob | null>(null);
   const [croppedImageUrl, setCroppedImageUrl] = useState<string>("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [timezones, setTimezones] = useState<any[]>([]);
+  const [timezone, setTimezone] = useState<string>(profile?.timezone || "");
+  const [timezoneSearch, setTimezoneSearch] = useState("");
+
+  useEffect(() => {
+    // Fetch all timezones from the API
+    fetch("/api/timezones")
+      .then((res) => res.json())
+      .then((data) => setTimezones(data));
+  }, []);
+
+  // Get the selected timezone object for display
+  const selectedTimezone = timezones.find((tz) => tz.id === timezone);
+
+  console.log("timezone", timezones);
 
   const handleAvatarFileSelect = (
     event: React.ChangeEvent<HTMLInputElement>
@@ -554,22 +568,22 @@ export function SettingsProfileView({ profile, email }: ProfileFormProps) {
                         {language}
                       </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent className="w-[var(--radix-dropdown-menu-trigger-width)] workspace-bg rounded-md p-2 space-y-1">
+                    <DropdownMenuContent className="w-[var(--radix-dropdown-menu-trigger-width)] p-2 space-y-1">
                       <DropdownMenuItem
                         onSelect={() => setLanguage("English")}
-                        className="cursor-pointer hover:workspace-hover rounded-sm p-1 text-sm"
+                        className="cursor-pointer hover:workspace-hover "
                       >
                         English
                       </DropdownMenuItem>
                       <DropdownMenuItem
                         onSelect={() => setLanguage("Spanish")}
-                        className="cursor-pointer hover:workspace-hover rounded-sm p-1 text-sm"
+                        className="cursor-pointer hover:workspace-hover "
                       >
                         Spanish
                       </DropdownMenuItem>
                       <DropdownMenuItem
                         onSelect={() => setLanguage("French")}
-                        className="cursor-pointer hover:workspace-hover rounded-sm p-1 text-sm"
+                        className="cursor-pointer hover:workspace-hover "
                       >
                         French
                       </DropdownMenuItem>
@@ -586,20 +600,60 @@ export function SettingsProfileView({ profile, email }: ProfileFormProps) {
                         variant="outline"
                         className="w-full justify-between"
                       >
-                        <Clock className="mr-2 h-4 w-4" />
-                        {timezone}
+                        <span>
+                          {selectedTimezone
+                            ? `${selectedTimezone.country} / ${
+                                selectedTimezone.city
+                              } (${selectedTimezone.abbreviation}) UTC${
+                                selectedTimezone.utc_offset >= 0 ? "+" : ""
+                              }${selectedTimezone.utc_offset}`
+                            : "Select Timezone"}
+                        </span>
                       </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent className="w-[var(--radix-dropdown-menu-trigger-width)] workspace-bg rounded-md p-2 space-y-1">
-                      {timezones.map((tz) => (
-                        <DropdownMenuItem
-                          key={tz}
-                          onSelect={() => setTimezone(tz)}
-                          className="cursor-pointer hover:workspace-hover rounded-sm p-1 text-sm"
-                        >
-                          {tz}
-                        </DropdownMenuItem>
-                      ))}
+                    <DropdownMenuContent className="w-[var(--radix-dropdown-menu-trigger-width)]">
+                      <div className="p-2 w-full">
+                        <Input
+                          placeholder="Search timezone..."
+                          value={timezoneSearch}
+                          onChange={(e) => setTimezoneSearch(e.target.value)}
+                          className="w-full mb-2"
+                        />
+                      </div>
+                      <ScrollArea className="h-[200px]">
+                        {(!Array.isArray(timezones) ||
+                          timezones.length === 0) && (
+                          <DropdownMenuItem disabled>
+                            No timezones found
+                          </DropdownMenuItem>
+                        )}
+                        {(Array.isArray(timezones) ? timezones : [])
+                          .filter((tz) => {
+                            const q = timezoneSearch.toLowerCase();
+                            return (
+                              tz.country?.toLowerCase().includes(q) ||
+                              tz.city?.toLowerCase().includes(q) ||
+                              tz.abbreviation?.toLowerCase().includes(q) ||
+                              tz.label?.toLowerCase().includes(q)
+                            );
+                          })
+                          .map((tz) => (
+                            <DropdownMenuItem
+                              key={tz.id}
+                              onSelect={() => setTimezone(tz.id)}
+                              className="w-full flex items-center justify-between hover:workspace-hover cursor-pointer"
+                            >
+                              <span>
+                                {tz.country} / {tz.city} ({tz.abbreviation}){" "}
+                              </span>{" "}
+                              <span>
+                                UTC
+                                {tz.utc_offset >= 0 ? "+" : ""}
+                                {tz.utc_offset}
+                              </span>
+                            </DropdownMenuItem>
+                          ))}
+                      </ScrollArea>
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </div>

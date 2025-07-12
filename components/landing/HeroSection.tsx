@@ -575,7 +575,7 @@ export default function HeroSection() {
                             ease: "easeInOut",
                           }}
                         />
-                        <span className="relative z-10">Get Beta Access</span>
+                        <span className="relative z-10">Get Early Access</span>
                         <motion.div
                           whileHover={{ x: 5 }}
                           transition={{ type: "spring", stiffness: 300 }}

@@ -28,6 +28,7 @@ import {
   MoreVertical,
   FileUp,
   Braces,
+  Lock,
 } from "lucide-react";
 import type {
   Workspace,
@@ -2262,6 +2263,7 @@ export default function SecondarySidebar({
                               <span className="text-xs font-medium workspace-sidebar-text truncate">
                                 {space.name}
                               </span>
+                              {space.is_private && <Lock className="w-3 h-3" />}
                               {hasJiraIntegration(space) && (
                                 <Tooltip>
                                   <TooltipTrigger asChild>
@@ -2475,6 +2477,8 @@ export default function SecondarySidebar({
                       <span className="text-xs font-medium workspace-sidebar-text truncate">
                         {space.name}
                       </span>
+
+                      {space.is_private && <Lock className="w-3 h-3 ml-2" />}
                       {hasJiraIntegration(space) && (
                         <Tooltip>
                           <TooltipTrigger asChild>

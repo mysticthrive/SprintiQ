@@ -17,9 +17,10 @@ import {
   CircleHelp,
   Brain,
   Building2,
+  ShieldHalf,
 } from "lucide-react";
 import type { Workspace, Profile } from "@/lib/database.types";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -59,6 +60,30 @@ export default function WorkspaceSidebar({
   const supabase = createClientSupabaseClient();
   const [isCollapsed, setIsCollapsed] = useState(true);
   const [isHovered, setIsHovered] = useState(false);
+  const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+    async function fetchAdminRole() {
+      if (!user?.email) {
+        setIsAdmin(false);
+        return;
+      }
+      setIsAdmin(null); // loading
+      const { data, error } = await supabase
+        .from("users")
+        .select("role")
+        .eq("email", user.email)
+        .maybeSingle();
+      if (isMounted) {
+        setIsAdmin(data?.role === "admin");
+      }
+    }
+    fetchAdminRole();
+    return () => {
+      isMounted = false;
+    };
+  }, [user?.email]);
 
   const navigation = [
     { name: "Home", href: `/${workspaceId}/home`, icon: Home },
@@ -322,26 +347,24 @@ export default function WorkspaceSidebar({
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="ml-2 w-64">
-            <DropdownMenuSub>
-              <DropdownMenuSubTrigger className="text-xs hover:workspace-hover cursor-pointer rounded-lg m-1 transition-colors">
-                <BellOff className="mr-1 h-4 w-4" />
-                Mute Notifications
-              </DropdownMenuSubTrigger>
-              <DropdownMenuSubContent className="w-48">
-                <DropdownMenuItem className="text-xs hover:workspace-hover cursor-pointer rounded-lg m-1 transition-colors">
-                  For 30 minutes
-                </DropdownMenuItem>
-                <DropdownMenuItem className="text-xs hover:workspace-hover cursor-pointer rounded-lg m-1 transition-colors">
-                  For 1 hour
-                </DropdownMenuItem>
-                <DropdownMenuItem className="text-xs hover:workspace-hover cursor-pointer rounded-lg m-1 transition-colors">
-                  Until tomorrow
-                </DropdownMenuItem>
-                <DropdownMenuItem className="text-xs hover:workspace-hover cursor-pointer rounded-lg m-1 transition-colors">
-                  Until next week
-                </DropdownMenuItem>
-              </DropdownMenuSubContent>
-            </DropdownMenuSub>
+            {isAdmin === null ? (
+              <DropdownMenuItem
+                disabled
+                className="text-xs cursor-wait rounded-lg m-1 transition-colors"
+              >
+                <ShieldHalf className="mr-1 h-4 w-4" />
+                Checking admin...
+              </DropdownMenuItem>
+            ) : isAdmin ? (
+              <DropdownMenuItem
+                className="text-xs hover:workspace-hover cursor-pointer rounded-lg m-1 transition-colors"
+                onClick={() => router.push("/admin/dashboard")}
+              >
+                <ShieldHalf className="mr-1 h-4 w-4" />
+                Admin Page
+              </DropdownMenuItem>
+            ) : null}
+            <DropdownMenuSeparator className="workspace-hover my-2" />
             <DropdownMenuItem
               className="text-xs hover:workspace-hover cursor-pointer rounded-lg m-1 transition-colors"
               onClick={() => router.push(`/${workspaceId}/settings/profile`)}
@@ -351,20 +374,14 @@ export default function WorkspaceSidebar({
             </DropdownMenuItem>
             <DropdownMenuItem
               className="text-xs hover:workspace-hover cursor-pointer rounded-lg m-1 transition-colors"
-              onClick={() => router.push(`/${workspaceId}/settings/profile`)}
+              onClick={() =>
+                router.push(`/${workspaceId}/settings/notifications`)
+              }
             >
-              <Settings className="mr-1 h-4 w-4" />
-              Settings
-            </DropdownMenuItem>
-            <DropdownMenuItem className="text-xs hover:workspace-hover cursor-pointer rounded-lg m-1 transition-colors">
               <BellOff className="mr-1 h-4 w-4" />
               Notification Settings
             </DropdownMenuItem>
             <DropdownMenuSeparator className="workspace-hover my-2" />
-            <DropdownMenuItem className="text-xs hover:workspace-hover cursor-pointer rounded-lg m-1 transition-colors">
-              <CircleHelp className="mr-1 h-4 w-4" />
-              Help
-            </DropdownMenuItem>
             <DropdownMenuItem
               className="text-rose-500 text-xs hover:bg-rose-500/20 hover:text-rose-300 cursor-pointer rounded-lg m-1 transition-colors"
               onClick={handleLogout}

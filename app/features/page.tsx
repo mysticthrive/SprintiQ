@@ -245,7 +245,7 @@ export default function FeaturesPage() {
                   whileTap={{ scale: 0.95 }}
                 >
                   <Button className="bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-700 hover:to-green-700 text-white px-8 py-4 text-lg font-semibold rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 group animate-pulse-glow">
-                    Get Beta Access
+                    Get Early Access
                     <motion.div
                       whileHover={{ x: 5 }}
                       transition={{ type: "spring", stiffness: 300 }}

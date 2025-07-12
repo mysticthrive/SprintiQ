@@ -1,6 +1,6 @@
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
-import { isEmailAllowedServer } from "@/lib/auth-utils-server";
+import { isUserAllowedServer } from "@/lib/auth-utils-server";
 
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
@@ -20,12 +20,23 @@ export async function GET(request: Request) {
     const {
       data: { user },
     } = await supabase.auth.getUser();
-    if (user?.email) {
-      const isAllowed = await isEmailAllowedServer(user.email);
-      if (!isAllowed) {
-        // Sign out the user and redirect to access denied
-        await supabase.auth.signOut();
-        return NextResponse.redirect(new URL("/access-denied", origin));
+    if (user) {
+      // Check if user row exists
+      const { data: userRow } = await supabase
+        .from("users")
+        .select("id")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      if (!userRow) {
+        await supabase.from("users").insert({
+          id: user.id,
+          name: user.user_metadata?.full_name || "",
+          email: user.email,
+          allowed: false,
+          role: "user",
+          company: user.user_metadata?.company || "",
+        });
       }
     }
   }

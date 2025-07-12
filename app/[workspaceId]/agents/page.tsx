@@ -9,9 +9,10 @@ import {
   generateTAWOSStories,
   generateProjectSuggestions,
   saveUserStoryToDestination,
-  saveTeamMember,
   createSpaceAndProject,
   analyzeStoryDependencies,
+  createSprintFolder,
+  createSprints,
 } from "@/app/[workspaceId]/ai-actions";
 import {
   Pencil,
@@ -28,7 +29,8 @@ import {
   ChartGantt,
   Goal,
   Clock,
-  BriefcaseBusiness,
+  Calendar,
+  SquareCheckBig,
 } from "lucide-react";
 import { useEnhancedToast } from "@/hooks/use-enhanced-toast";
 
@@ -41,12 +43,7 @@ import SprintAssistant from "@/components/workspace/ai/sprint-assistant";
 import type { EnhancedSprint } from "@/lib/sprint-creation-service";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import SaveProgressModal from "@/components/workspace/ai/save-progress-modal";
-import {
-  DEFAULT_WEIGHTS,
-  type TeamMember,
-  type Sprint,
-  UserStory,
-} from "@/types";
+import { DEFAULT_WEIGHTS, type TeamMember, UserStory } from "@/types";
 import { getPriorityColor } from "@/lib/utils";
 import EditStoryModal from "@/components/workspace/ai/edit-story-modal";
 import SaveDestinationModal from "@/components/workspace/ai/save-destination-modal";
@@ -109,6 +106,7 @@ export default function AgentsPage() {
   const [newProjectName, setNewProjectName] = useState<string>("");
   const [newStatusNames, setNewStatusNames] = useState<string[]>([]);
   const [newStatusColors, setNewStatusColors] = useState<string[]>([]);
+  const [newSprintFolderName, setNewSprintFolderName] = useState<string>("");
   const [isGeneratingSuggestions, setIsGeneratingSuggestions] = useState(false);
 
   // Available spaces and projects
@@ -135,6 +133,7 @@ export default function AgentsPage() {
   const [showDependenciesModal, setShowDependenciesModal] = useState(false);
   const [showVisualization, setShowVisualization] = useState(false);
   const [showSprintAssistant, setShowSprintAssistant] = useState(false);
+  const [sprintType, setSprintType] = useState<"ai" | "manual" | null>(null);
   const [selectedStoryForDependencies, setSelectedStoryForDependencies] =
     useState<UserStory | null>(null);
   const [isAnalyzingDependencies, setIsAnalyzingDependencies] = useState(false);
@@ -331,7 +330,6 @@ export default function AgentsPage() {
           "Space and project names have been suggested based on your stories.",
       });
     } catch (error) {
-      console.error("Error getting AI suggestions:", error);
       toast({
         title: "Error",
         description: "Failed to get AI suggestions. Please try again.",
@@ -341,6 +339,12 @@ export default function AgentsPage() {
       setIsGeneratingSuggestions(false);
     }
   };
+
+  const [sprintFolder, setSprintFolder] = useState<any>(null);
+  const [createdSprints, setCreatedSprints] = useState<any[]>([]);
+  const [storiesBySprint, setStoriesBySprint] = useState<
+    Record<string, UserStory[]>
+  >({});
 
   const handleSaveAll = async () => {
     setLoadingState({
@@ -354,6 +358,8 @@ export default function AgentsPage() {
       let projectId: string | undefined = selectedProjectId;
       let spaceUuid: string | undefined;
       let projectUuid: string | undefined;
+      let createdProjectStatuses: any[] | undefined = undefined;
+      let createdSprintStatuses: any[] | undefined = undefined;
 
       // Get current user for events
       const {
@@ -384,266 +390,468 @@ export default function AgentsPage() {
         return;
       }
 
-      // If creating new space/project
-      if (destinationType === "new") {
-        setLoadingState({
-          isOpen: true,
-          currentStep: "Creating new space and project...",
-          progress: 10,
-        });
+      // --- PROJECT MODE (no sprints) ---
+      if (!createdSprints || createdSprints.length === 0) {
+        // If creating new space/project
+        if (destinationType === "new") {
+          setLoadingState({
+            isOpen: true,
+            currentStep: "Creating new space and project...",
+            progress: 10,
+          });
 
-        const result = await createSpaceAndProject(
-          workspaceId,
-          newSpaceName,
-          newProjectName,
-          newStatusNames.length
-            ? newStatusNames
-            : ["To Do", "In Progress", "Review", "Done"],
-          newStatusColors.length
-            ? newStatusColors
-            : ["gray", "blue", "yellow", "green"]
-        );
+          const result = await createSpaceAndProject(
+            workspaceId,
+            newSpaceName,
+            newProjectName,
+            newStatusNames.length
+              ? newStatusNames
+              : ["To Do", "In Progress", "Review", "Done"],
+            newStatusColors.length
+              ? newStatusColors
+              : ["gray", "blue", "yellow", "green"]
+          );
 
-        if (!result.success) {
+          if (!result.success) {
+            toast({
+              title: "Failed to create space/project",
+              description: result.error,
+              variant: "destructive",
+            });
+            setLoadingState({ isOpen: false, currentStep: "", progress: 0 });
+            return;
+          }
+
+          spaceId = result.spaceId;
+          projectId = result.projectId;
+          createdProjectStatuses = (result as any).createdStatuses ?? [];
+
+          // Get the UUIDs for the new space and project
+          const { data: newSpace } = await supabase
+            .from("spaces")
+            .select("id")
+            .eq("space_id", spaceId)
+            .single();
+
+          const { data: newProject } = await supabase
+            .from("projects")
+            .select("id")
+            .eq("project_id", projectId)
+            .single();
+
+          if (newSpace && newProject) {
+            spaceUuid = newSpace.id;
+            projectUuid = newProject.id;
+
+            // Create event for space creation
+            await createEventServer({
+              type: "created",
+              entityType: "space",
+              entityId: newSpace.id,
+              entityName: newSpaceName,
+              userId: user.id,
+              workspaceId: workspace.id,
+              spaceId: newSpace.id,
+              description: `Created space "${newSpaceName}" with AI-generated stories`,
+              metadata: {
+                aiGenerated: true,
+                storyCount: generatedStories.length,
+              },
+            });
+
+            // Create event for project creation
+            await createEventServer({
+              type: "created",
+              entityType: "project",
+              entityId: newProject.id,
+              entityName: newProjectName,
+              userId: user.id,
+              workspaceId: workspace.id,
+              spaceId: newSpace.id,
+              projectId: newProject.id,
+              description: `Created project "${newProjectName}" with AI-generated stories`,
+              metadata: {
+                aiGenerated: true,
+                storyCount: generatedStories.length,
+              },
+            });
+          }
+
+          await loadSpacesAndProjects();
+        } else {
+          // Existing project/space
+          const { data: existingSpace } = await supabase
+            .from("spaces")
+            .select("id")
+            .eq("space_id", spaceId)
+            .single();
+
+          const { data: existingProject } = await supabase
+            .from("projects")
+            .select("id")
+            .eq("project_id", projectId)
+            .single();
+
+          if (existingSpace && existingProject) {
+            spaceUuid = existingSpace.id;
+            projectUuid = existingProject.id;
+          }
+        }
+
+        if (!spaceId || !projectId || !spaceUuid || !projectUuid) {
           toast({
-            title: "Failed to create space/project",
-            description: result.error,
+            title: "Missing information",
+            description: "Space or project ID is missing.",
             variant: "destructive",
           });
           setLoadingState({ isOpen: false, currentStep: "", progress: 0 });
           return;
         }
 
-        spaceId = result.spaceId;
-        projectId = result.projectId;
-
-        // Get the UUIDs for the new space and project
-        const { data: newSpace } = await supabase
-          .from("spaces")
-          .select("id")
-          .eq("space_id", spaceId)
-          .single();
-
-        const { data: newProject } = await supabase
-          .from("projects")
-          .select("id")
-          .eq("project_id", projectId)
-          .single();
-
-        if (newSpace && newProject) {
-          spaceUuid = newSpace.id;
-          projectUuid = newProject.id;
-
-          // Create event for space creation
-          await createEventServer({
-            type: "created",
-            entityType: "space",
-            entityId: newSpace.id,
-            entityName: newSpaceName,
-            userId: user.id,
-            workspaceId: workspace.id,
-            spaceId: newSpace.id,
-            description: `Created space "${newSpaceName}" with AI-generated stories`,
-            metadata: {
-              aiGenerated: true,
-              storyCount: generatedStories.length,
-            },
+        // Get statuses for the project if not already available
+        if (!createdProjectStatuses || createdProjectStatuses.length === 0) {
+          const { data: statuses } = await supabase
+            .from("statuses")
+            .select("id")
+            .eq("project_id", projectUuid)
+            .order("position", { ascending: true });
+          createdProjectStatuses = statuses ?? [];
+        }
+        const firstStatusId =
+          createdProjectStatuses.length > 0
+            ? createdProjectStatuses[0].id
+            : undefined;
+        if (!firstStatusId) {
+          toast({
+            title: "No statuses found",
+            description: "Could not find a status for the project.",
+            variant: "destructive",
           });
-
-          // Create event for project creation
-          await createEventServer({
-            type: "created",
-            entityType: "project",
-            entityId: newProject.id,
-            entityName: newProjectName,
-            userId: user.id,
-            workspaceId: workspace.id,
-            spaceId: newSpace.id,
-            projectId: newProject.id,
-            description: `Created project "${newProjectName}" with AI-generated stories`,
-            metadata: {
-              aiGenerated: true,
-              storyCount: generatedStories.length,
-            },
-          });
+          setLoadingState({ isOpen: false, currentStep: "", progress: 0 });
+          return;
         }
 
-        await loadSpacesAndProjects();
-      } else {
-        // Get UUIDs for existing space and project
-        const { data: existingSpace } = await supabase
-          .from("spaces")
-          .select("id")
-          .eq("space_id", spaceId)
-          .single();
-
-        const { data: existingProject } = await supabase
-          .from("projects")
-          .select("id")
-          .eq("project_id", projectId)
-          .single();
-
-        if (existingSpace && existingProject) {
-          spaceUuid = existingSpace.id;
-          projectUuid = existingProject.id;
-        }
-      }
-
-      // Type guard to ensure we have valid IDs before saving stories
-      if (!spaceId || !projectId || !spaceUuid || !projectUuid) {
-        toast({
-          title: "Missing information",
-          description: "Space or project ID is missing.",
-          variant: "destructive",
+        setLoadingState({
+          isOpen: true,
+          currentStep: "Saving stories...",
+          progress: 50,
         });
-        setLoadingState({ isOpen: false, currentStep: "", progress: 0 });
-        return;
-      }
-
-      // Save new team members first
-      setLoadingState({
-        isOpen: true,
-        currentStep: "Saving new team members...",
-        progress: 15,
-      });
-
-      // Only save team members that are newly created (have IDs starting with 'member-')
-      const newTeamMembers = generatedStories
-        .map((story) => story.assignedTeamMember)
-        .filter((member) => member && member.id.startsWith("member-"))
-        .filter(
-          (member, index, arr) =>
-            arr.findIndex((m) => m?.email === member?.email) === index
-        ) as TeamMember[];
-
-      let savedMembersCount = 0;
-      for (const member of newTeamMembers) {
-        try {
-          const result = await saveTeamMember(member, workspaceId);
-          if (result.success) {
-            savedMembersCount++;
+        for (const story of generatedStories) {
+          const result = await saveUserStoryToDestination(story, workspaceId, {
+            type: destinationType,
+            spaceId: spaceUuid,
+            projectId: projectUuid,
+            statusId: firstStatusId,
+            spaceName: newSpaceName,
+            projectName: newProjectName,
+          });
+          if (!result.success) {
+            toast({
+              title: "Failed to save story",
+              description: result.error,
+              variant: "destructive",
+            });
           }
-        } catch (error) {
-          console.error("Error saving team member:", error);
         }
-      }
+      } else {
+        // --- SPRINT MODE (sprints exist) ---
+        if (createdSprints && createdSprints.length > 0) {
+          let sprintSpaceUuid = spaceUuid;
 
-      if (newTeamMembers.length > 0) {
-        toast({
-          title: "Team members saved",
-          description: `Successfully saved ${savedMembersCount} of ${newTeamMembers.length} new team members.`,
-          browserNotificationTitle: "Team members saved",
-          browserNotificationBody: `Successfully saved ${savedMembersCount} of ${newTeamMembers.length} new team members.`,
-        });
-      }
+          // SPRINT + NEW SPACE FLOW
+          if (destinationType === "new") {
+            // 1. Create new space
+            const { data: newSpace, error: spaceError } = await supabase
+              .from("spaces")
+              .insert({
+                name: newSpaceName,
+                description: `Space for ${newSpaceName} related projects`,
+                icon: "blue",
+                is_private: false,
+                workspace_id: workspace.id,
+              })
+              .select("id, space_id")
+              .single();
+            if (spaceError || !newSpace) {
+              toast({
+                title: "Failed to create space",
+                description: spaceError?.message,
+                variant: "destructive",
+              });
+              return;
+            }
+            sprintSpaceUuid = newSpace.id;
 
-      // Calculate progress increment per story
-      const baseProgress = destinationType === "new" ? 30 : 20;
-      const progressPerStory = (100 - baseProgress) / generatedStories.length;
+            // 2. Add user as member
+            const { error: memberError } = await supabase
+              .from("space_members")
+              .insert({
+                space_id: sprintSpaceUuid,
+                user_id: user.id,
+                role: "admin",
+              });
 
-      // Save all stories
-      let successCount = 0;
-      for (let i = 0; i < generatedStories.length; i++) {
-        const story = generatedStories[i];
-        try {
+            // 3. Verify membership
+            const { data: memberCheck, error: checkError } = await supabase
+              .from("space_members")
+              .select("*")
+              .eq("space_id", sprintSpaceUuid)
+              .eq("user_id", user.id)
+              .single();
+            if (!memberCheck) {
+              toast({
+                title: "Membership insert failed",
+                description:
+                  checkError?.message ||
+                  "User is not a member of the new space.",
+                variant: "destructive",
+              });
+              return;
+            }
+          } else {
+            // SPRINT + EXISTING SPACE FLOW
+            // Use the selected existing space
+            if (!selectedSpaceId) {
+              toast({
+                title: "No space selected",
+                description:
+                  "Please select an existing space for the sprint folder.",
+                variant: "destructive",
+              });
+              return;
+            }
+
+            // Get the UUID of the selected space
+            const { data: existingSpace } = await supabase
+              .from("spaces")
+              .select("id")
+              .eq("space_id", selectedSpaceId)
+              .single();
+
+            if (!existingSpace) {
+              toast({
+                title: "Space not found",
+                description: "The selected space could not be found.",
+                variant: "destructive",
+              });
+              return;
+            }
+
+            sprintSpaceUuid = existingSpace.id;
+          }
+
+          if (!sprintSpaceUuid) {
+            toast({
+              title: "Missing space UUID",
+              description: "Sprint space UUID is required but was not found.",
+              variant: "destructive",
+            });
+            setLoadingState({ isOpen: false, currentStep: "", progress: 0 });
+            return;
+          }
+
+          // 4. Create sprint folder (always use sprintSpaceUuid)
           setLoadingState({
             isOpen: true,
-            currentStep: `Saving story ${i + 1} of ${
-              generatedStories.length
-            }: "${story.title}"`,
-            progress: baseProgress + progressPerStory * i,
+            currentStep: "Creating sprint folder...",
+            progress: 20,
           });
 
-          const saveResult = await saveUserStoryToDestination(
-            story,
-            workspaceId,
-            {
-              type: "existing", // Always use "existing" here because we've already created the space/project if needed
-              spaceId,
-              projectId,
-            },
-            priorityWeights
+          // Use user-provided sprint folder name or generate one
+          const sprintFolderName =
+            newSprintFolderName ||
+            (destinationType === "new"
+              ? `${newProjectName || "Project"} Sprints`
+              : "Sprint Folder");
+
+          // Calculate total duration for the sprint folder
+          const totalDurationWeeks =
+            createdSprints && createdSprints.length > 0
+              ? createdSprints.reduce(
+                  (sum, sprint) => sum + (sprint.duration || 2),
+                  0
+                )
+              : 2;
+
+          // Determine the first sprint's start date (earliest)
+          let sprintStartDayId: string | null = null;
+          if (createdSprints && createdSprints.length > 0) {
+            // Find the earliest start date
+            const sprintsWithStart = createdSprints.filter((s) => s.startDate);
+            if (sprintsWithStart.length > 0) {
+              const firstSprint = sprintsWithStart.reduce((a, b) =>
+                new Date(a.startDate) < new Date(b.startDate) ? a : b
+              );
+              const startDate = firstSprint.startDate;
+              if (startDate) {
+                // Get day of week as string (e.g., 'Monday')
+                const dayOfWeek = new Date(startDate).toLocaleDateString(
+                  "en-US",
+                  { weekday: "long" }
+                );
+                // Query days table for id
+                const { data: dayRow, error: dayError } = await supabase
+                  .from("days")
+                  .select("id")
+                  .eq("name", dayOfWeek)
+                  .single();
+                if (dayRow && dayRow.id) {
+                  sprintStartDayId = dayRow.id;
+                }
+              }
+            }
+          }
+
+          const sprintFolderResult = await createSprintFolder({
+            name: sprintFolderName,
+            spaceId: sprintSpaceUuid,
+            durationWeeks: totalDurationWeeks,
+            sprintStartDayId,
+          });
+          if (!sprintFolderResult.success || !sprintFolderResult.sprintFolder) {
+            toast({
+              title: "Failed to create sprint folder",
+              description: sprintFolderResult.error,
+              variant: "destructive",
+            });
+            return;
+          }
+          setSprintFolder(sprintFolderResult.sprintFolder);
+
+          // 5. Continue with sprints and stories (use sprintSpaceUuid for all inserts)
+          setLoadingState({
+            isOpen: true,
+            currentStep: "Creating sprints...",
+            progress: 30,
+          });
+          // Create sprints without setting sprint_id (let database generate UUID)
+          const sprintsToCreate = createdSprints.map((sprint: any) => ({
+            name: sprint.name,
+            goal: sprint.goal,
+            startDate: sprint.startDate,
+            endDate: sprint.endDate,
+            duration: sprint.duration,
+          }));
+
+          const sprintsResult = await createSprints({
+            sprints: sprintsToCreate,
+            sprintFolderId: sprintFolderResult.sprintFolder.id,
+            spaceId: sprintSpaceUuid,
+            workspaceId: workspace.id,
+          });
+          if (!sprintsResult.success || !sprintsResult.createdSprints) {
+            toast({
+              title: "Failed to create sprints",
+              description: sprintsResult.error,
+              variant: "destructive",
+            });
+            return;
+          }
+
+          // Create mapping from original sprint IDs to new sprint internal IDs
+          const originalToInternalSprintMap: Record<string, string> = {};
+          sprintsResult.createdSprints.forEach(
+            (newSprint: any, index: number) => {
+              const originalSprintId = createdSprints[index].id;
+              originalToInternalSprintMap[originalSprintId] = newSprint.id;
+            }
           );
 
-          if (saveResult.success) {
-            successCount++;
+          setCreatedSprints(sprintsResult.createdSprints);
+          createdSprintStatuses = sprintsResult.createdStatuses;
+
+          // Map sprintId to backlog statusId
+          const sprintBacklogStatusMap: Record<string, string> = {};
+          if (createdSprintStatuses) {
+            for (const status of createdSprintStatuses) {
+              if (status.sprint_id) {
+                sprintBacklogStatusMap[status.sprint_id] = status.id;
+              }
+            }
           }
-        } catch (error) {
-          console.error("Error saving story:", error);
-        }
-      }
 
-      setLoadingState({
-        isOpen: true,
-        currentStep: "Completing save operation...",
-        progress: 100,
-      });
+          // Debug: Check what sprint IDs are in the stories
+          const storySprintIds = new Set(
+            generatedStories.map((s) => s.sprintId).filter(Boolean)
+          );
 
-      const {
-        data: { profile },
-      } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", user?.id)
-        .single();
-      if (
-        profile?.email_notifications === "All" ||
-        (profile?.email_notifications === "Default" &&
-          ["story"].includes("story") &&
-          ["created", "updated", "deleted"].includes("created"))
-      ) {
-        try {
-          const response = await fetch("/api/send-email-notification", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              userId: user?.id,
-              eventType: "created",
-              entityType: "story",
-              entityName: "AI-generated stories",
-              description: `${successCount} of ${generatedStories.length} stories generated.`,
-              workspaceId: workspace.id,
-            }),
+          // Update stories to use new internal sprint IDs
+          const updatedStories = generatedStories.map((story) => {
+            if (story.sprintId && originalToInternalSprintMap[story.sprintId]) {
+              return {
+                ...story,
+                sprintId: originalToInternalSprintMap[story.sprintId],
+              };
+            }
+            return story;
           });
+          setGeneratedStories(updatedStories);
 
-          const result = await response.json();
-
-          if (result.success) {
-            console.log("Test email sent successfully");
-          } else {
-            console.error("Failed to send test email");
+          // --- Group by sprint for UI and saving ---
+          const bySprint: Record<string, UserStory[]> = {};
+          for (const story of updatedStories) {
+            if (!story.sprintId) continue;
+            if (!bySprint[story.sprintId]) {
+              bySprint[story.sprintId] = [];
+            }
+            bySprint[story.sprintId].push(story);
           }
-        } catch (error) {
-          console.error("Failed to send test email");
+          setStoriesBySprint(bySprint);
+
+          setLoadingState({
+            isOpen: true,
+            currentStep: "Saving stories...",
+            progress: 50,
+          });
+          for (const sprintStories of Object.values(bySprint)) {
+            for (const story of sprintStories) {
+              const result = await saveUserStoryToDestination(
+                story,
+                workspaceId,
+                {
+                  type: destinationType,
+                  spaceId: sprintSpaceUuid, // use UUID
+                  projectId: projectUuid, // use UUID
+                  sprintId: story.sprintId,
+                  statusId: story.sprintId
+                    ? sprintBacklogStatusMap[story.sprintId]
+                    : undefined,
+                }
+              );
+              if (!result.success) {
+                console.error("[Save] Failed to save story", {
+                  story,
+                  error: result.error,
+                });
+                toast({
+                  title: "Failed to save story",
+                  description: result.error,
+                  variant: "destructive",
+                });
+              }
+            }
+          }
         }
-      }
 
-      toast({
-        title: "Stories saved",
-        description: `Successfully saved ${successCount} of ${generatedStories.length} stories.`,
-        variant:
-          successCount === generatedStories.length ? "default" : "destructive",
-        browserNotificationTitle: "Stories saved",
-        browserNotificationBody: `Successfully saved ${successCount} of ${generatedStories.length} stories.`,
-      });
-
-      if (successCount === generatedStories.length) {
-        setGeneratedStories([]);
-        setShowSaveModal(false);
+        setLoadingState({
+          isOpen: false,
+          currentStep: "Stories saved!",
+          progress: 100,
+        });
+        toast({
+          title: "Stories and sprints saved!",
+          description: "All generated stories and sprints have been saved.",
+        });
+        // Optionally, refresh or redirect
       }
     } catch (error) {
-      console.error("Error saving all stories:", error);
+      console.error(error);
       toast({
         title: "Error",
-        description: "An unexpected error occurred while saving stories.",
+        description: "An error occurred while saving stories and sprints.",
         variant: "destructive",
       });
-    } finally {
-      setTimeout(() => {
-        setLoadingState({ isOpen: false, currentStep: "", progress: 0 });
-      }, 1000);
+      setLoadingState({ isOpen: false, currentStep: "", progress: 0 });
     }
   };
 
@@ -781,6 +989,42 @@ export default function AgentsPage() {
       setIsAnalyzingDependencies(false);
       setShowAnalyzingModal(false);
     }
+  };
+
+  // Handler for SprintAssistant's Save Sprints button
+  const handleSaveSprintsFromAssistant = (
+    sprints: any[],
+    type: "ai" | "manual"
+  ) => {
+    // LOG: Entry point
+    // Group stories by sprint
+    let bySprint: Record<string, UserStory[]> = {};
+    let allStories: UserStory[] = [];
+    if (type === "manual") {
+      sprints.forEach((sprint: any) => {
+        // Add a marker for manual
+        sprint.created_by = "manual";
+        bySprint[sprint.id] = sprint.selectedStories.map(
+          (story: UserStory) => ({ ...story, sprintId: sprint.id })
+        );
+        allStories = allStories.concat(bySprint[sprint.id]);
+      });
+      setCreatedSprints(sprints);
+    } else {
+      sprints.forEach((sprint: any) => {
+        // Add a marker for ai
+        sprint.created_by = "ai";
+        bySprint[sprint.id] = (sprint.stories || []).map(
+          (story: UserStory) => ({ ...story, sprintId: sprint.id })
+        );
+        allStories = allStories.concat(bySprint[sprint.id]);
+      });
+      setCreatedSprints(sprints);
+    }
+    setStoriesBySprint(bySprint);
+    setShowSprintAssistant(false);
+    setSprintType(type);
+    setGeneratedStories(allStories); // For fallback/compatibility
   };
 
   return (
@@ -971,6 +1215,355 @@ export default function AgentsPage() {
                         ))}
                       </div>
                     </div>
+                  ) : Object.keys(storiesBySprint).length > 0 ? (
+                    <div className="space-y-8 pb-4">
+                      {Object.entries(storiesBySprint).map(
+                        ([sprintId, stories], idx) => {
+                          // Find sprint meta from createdSprints
+                          const sprintMeta = createdSprints.find(
+                            (s) => s.id === sprintId
+                          );
+                          return (
+                            <div key={sprintId} className="mb-6">
+                              <div className="flex flex-col gap-2 mb-2">
+                                <div className="flex flex-row items-center justify-between">
+                                  <span className="font-bold text-workspace-primary text-base flex items-center">
+                                    <ChartGantt className="h-5 w-5 mr-2" />
+                                    {sprintMeta?.name || `Sprint ${idx + 1}`}
+                                  </span>
+                                  <div className="flex gap-2 ml-4 flex-wrap">
+                                    {sprintMeta?.duration && (
+                                      <Badge
+                                        variant="secondary"
+                                        className="bg-rose-500/10 text-rose-600"
+                                      >
+                                        <Calendar className="w-3 h-3 mr-1" />{" "}
+                                        {sprintMeta.duration} weeks
+                                      </Badge>
+                                    )}
+                                    {sprintMeta?.startDate &&
+                                      sprintMeta?.endDate && (
+                                        <Badge
+                                          variant="secondary"
+                                          className="bg-yellow-500/10 text-yellow-600"
+                                        >
+                                          <Calendar className="w-3 h-3 mr-1" />
+                                          {sprintMeta.startDate
+                                            ? new Date(
+                                                sprintMeta.startDate
+                                              ).toLocaleDateString()
+                                            : ""}
+                                          {" - "}
+                                          {sprintMeta.endDate
+                                            ? new Date(
+                                                sprintMeta.endDate
+                                              ).toLocaleDateString()
+                                            : ""}
+                                        </Badge>
+                                      )}
+
+                                    <Badge
+                                      variant="secondary"
+                                      className="bg-green-500/10 text-green-600"
+                                    >
+                                      <SquareCheckBig className="w-3 h-3 mr-1" />{" "}
+                                      {stories.length} stories
+                                    </Badge>
+                                    <Badge
+                                      variant="secondary"
+                                      className="bg-blue-500/10 text-blue-600"
+                                    >
+                                      <Target className="w-3 h-3 mr-1" />
+                                      {stories.reduce(
+                                        (sum, s) => sum + (s.storyPoints || 0),
+                                        0
+                                      )}{" "}
+                                      pts
+                                    </Badge>
+                                  </div>
+                                </div>
+                                {sprintMeta?.goal && (
+                                  <span className="rounded-md text-xs border workspace-border p-2">
+                                    {sprintMeta.goal}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="space-y-4 pl-2 border-l-2">
+                                {/* Keep original story card rendering here */}
+                                {stories.map((story, idx) => (
+                                  <motion.div
+                                    key={story.id}
+                                    initial={{ opacity: 0, y: 20 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    exit={{ opacity: 0, y: 20 }}
+                                    transition={{
+                                      delay: idx * 0.25,
+                                      duration: 0.5,
+                                      type: "spring",
+                                    }}
+                                  >
+                                    <Card
+                                      className={cn(
+                                        "p-4",
+                                        story.parentTaskId &&
+                                          "border-l-4 border-blue-500 pl-3"
+                                      )}
+                                    >
+                                      <div className="space-y-2">
+                                        <div className="flex items-center justify-between">
+                                          <div className="flex items-center gap-2">
+                                            <h3 className="font-semibold">
+                                              <Typewriter
+                                                words={[story.title]}
+                                                typeSpeed={30}
+                                                cursor={false}
+                                              />
+                                            </h3>
+                                            {story.parentTaskId && (
+                                              <Badge
+                                                variant="outline"
+                                                className="text-xs"
+                                              >
+                                                Sub-story
+                                              </Badge>
+                                            )}
+                                          </div>
+                                          <div className="flex items-center space-x-2">
+                                            <motion.div
+                                              initial={{ scale: 0 }}
+                                              animate={{ scale: 1 }}
+                                              transition={{
+                                                delay: idx * 0.25 + 0.2,
+                                                type: "spring",
+                                                stiffness: 400,
+                                                damping: 20,
+                                              }}
+                                            >
+                                              <Badge
+                                                variant="secondary"
+                                                className={`${getPriorityColor(
+                                                  story.priority
+                                                )} text-xs flex items-center`}
+                                              >
+                                                <Goal className="h-3 w-3 mr-1" />
+                                                {story.priority}
+                                              </Badge>
+                                            </motion.div>
+                                            <motion.div
+                                              initial={{ scale: 0 }}
+                                              animate={{ scale: 1 }}
+                                              transition={{
+                                                delay: idx * 0.25 + 0.3,
+                                                type: "spring",
+                                                stiffness: 400,
+                                                damping: 20,
+                                              }}
+                                            >
+                                              <Badge
+                                                variant="secondary"
+                                                className="flex items-center bg-gray-500/10 text-gray-600"
+                                              >
+                                                <Target className="h-3 w-3 mr-1" />
+                                                {story.storyPoints} pts
+                                              </Badge>
+                                            </motion.div>
+                                            {story.estimatedTime && (
+                                              <motion.div
+                                                initial={{ scale: 0 }}
+                                                animate={{ scale: 1 }}
+                                                transition={{
+                                                  delay: idx * 0.25 + 0.4,
+                                                  type: "spring",
+                                                  stiffness: 400,
+                                                  damping: 20,
+                                                }}
+                                              >
+                                                <Badge
+                                                  variant="secondary"
+                                                  className="bg-blue-500/10 text-blue-500 flex items-center"
+                                                >
+                                                  <Clock className="h-3 w-3 mr-1" />
+                                                  {story.estimatedTime}h
+                                                </Badge>
+                                              </motion.div>
+                                            )}
+                                            {story.assignedTeamMember && (
+                                              <Avatar className="h-8 w-8">
+                                                <AvatarImage
+                                                  src={
+                                                    story.assignedTeamMember
+                                                      .avatar_url
+                                                  }
+                                                  alt={
+                                                    story.assignedTeamMember
+                                                      .name
+                                                  }
+                                                />
+                                                <AvatarFallback className="text-xs font-bold text-workspace-primary workspace-component-bg">
+                                                  {story.assignedTeamMember.name
+                                                    .split(" ")
+                                                    .map((n) => n[0])
+                                                    .join("")
+                                                    .toUpperCase()
+                                                    .slice(0, 2)}
+                                                </AvatarFallback>
+                                              </Avatar>
+                                            )}
+                                          </div>
+                                        </div>
+                                        {story.parentTaskId && (
+                                          <div className="text-sm text-muted-foreground">
+                                            Parent story:{" "}
+                                            {
+                                              generatedStories.find(
+                                                (s) =>
+                                                  s.id === story.parentTaskId
+                                              )?.title
+                                            }
+                                          </div>
+                                        )}
+                                        <p className="text-sm text-muted-foreground">
+                                          As a{" "}
+                                          <span className="font-medium">
+                                            <Typewriter
+                                              words={[story.role]}
+                                              typeSpeed={30}
+                                              cursor={false}
+                                            />
+                                          </span>
+                                          , I want{" "}
+                                          <span className="font-medium">
+                                            <Typewriter
+                                              words={[story.want]}
+                                              typeSpeed={30}
+                                              cursor={false}
+                                            />
+                                          </span>
+                                          , so that{" "}
+                                          <span className="font-medium">
+                                            <Typewriter
+                                              words={[story.benefit]}
+                                              typeSpeed={30}
+                                              cursor={false}
+                                            />
+                                          </span>
+                                        </p>
+                                        <div className="mt-2">
+                                          <h4 className="text-sm font-semibold mb-1">
+                                            Acceptance Criteria:
+                                          </h4>
+                                          <ul className="list-disc list-inside text-sm space-y-1">
+                                            {story.acceptanceCriteria.map(
+                                              (criteria, index) => (
+                                                <li key={index}>{criteria}</li>
+                                              )
+                                            )}
+                                          </ul>
+                                        </div>
+                                        {story.requirements &&
+                                          story.requirements.length > 0 && (
+                                            <div className="mt-2">
+                                              <h4 className="text-sm font-semibold mb-1">
+                                                Requirements:
+                                              </h4>
+                                              <ul className="list-disc list-inside text-sm space-y-1">
+                                                {story.requirements.map(
+                                                  (req, index) => (
+                                                    <li key={index}>{req}</li>
+                                                  )
+                                                )}
+                                              </ul>
+                                            </div>
+                                          )}
+                                        {story.antiPatternWarnings &&
+                                          story.antiPatternWarnings.length >
+                                            0 && (
+                                            <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded">
+                                              <h4 className="text-sm font-semibold mb-1 text-yellow-800">
+                                                ⚠️ Anti-pattern Warnings:
+                                              </h4>
+                                              <ul className="list-disc list-inside text-sm space-y-1 text-yellow-700">
+                                                {story.antiPatternWarnings.map(
+                                                  (warning, index) => (
+                                                    <li key={index}>
+                                                      {warning}
+                                                    </li>
+                                                  )
+                                                )}
+                                              </ul>
+                                            </div>
+                                          )}
+                                        {story.tags &&
+                                          story.tags.length > 0 && (
+                                            <div className="flex flex-wrap gap-2 mt-2">
+                                              {story.tags.map((tag, index) => (
+                                                <Badge
+                                                  key={index}
+                                                  variant="secondary"
+                                                  className="text-xs"
+                                                >
+                                                  {tag}
+                                                </Badge>
+                                              ))}
+                                            </div>
+                                          )}
+                                        {story.suggestedDependencies &&
+                                          story.suggestedDependencies.length >
+                                            0 && (
+                                            <div className="mt-4">
+                                              <h4 className="text-sm font-semibold mb-2">
+                                                Suggested Dependencies
+                                              </h4>
+                                              <hr className="my-2 workspace-border" />
+                                              <div className="space-y-2">
+                                                {story.suggestedDependencies.map(
+                                                  (dep, index) => {
+                                                    const dependentStory =
+                                                      generatedStories.find(
+                                                        (s) =>
+                                                          s.id === dep.taskId
+                                                      );
+                                                    if (!dependentStory)
+                                                      return null;
+                                                    return (
+                                                      <div
+                                                        key={index}
+                                                        className="p-2 workspace-component-bg rounded-lg text-sm"
+                                                      >
+                                                        <div className="flex items-center justify-between">
+                                                          <span className="font-medium workspace-component-active-color">
+                                                            {
+                                                              dependentStory.title
+                                                            }
+                                                          </span>
+                                                          <Badge variant="workspace">
+                                                            {Math.round(
+                                                              dep.confidence *
+                                                                100
+                                                            )}
+                                                            % confidence
+                                                          </Badge>
+                                                        </div>
+                                                        <p className="workspace-component-active-color mt-1 ">
+                                                          {dep.reason}
+                                                        </p>
+                                                      </div>
+                                                    );
+                                                  }
+                                                )}
+                                              </div>
+                                            </div>
+                                          )}
+                                      </div>
+                                    </Card>
+                                  </motion.div>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        }
+                      )}
+                    </div>
                   ) : generatedStories.length > 0 ? (
                     <AnimatePresence>
                       <div className="space-y-4 pb-4">
@@ -1045,8 +1638,8 @@ export default function AgentsPage() {
                                         }}
                                       >
                                         <Badge
-                                          variant="outline"
-                                          className="flex items-center"
+                                          variant="secondary"
+                                          className="flex items-center bg-gray-500/10 text-gray-600"
                                         >
                                           <Target className="h-3 w-3 mr-1" />
                                           {story.storyPoints} pts
@@ -1064,8 +1657,8 @@ export default function AgentsPage() {
                                           }}
                                         >
                                           <Badge
-                                            variant="outline"
-                                            className="bg-blue-500/10 border-blue-500/10 text-blue-500 flex items-center"
+                                            variant="secondary"
+                                            className="bg-blue-500/10 text-blue-500 flex items-center"
                                           >
                                             <Clock className="h-3 w-3 mr-1" />
                                             {story.estimatedTime}h
@@ -1326,6 +1919,7 @@ export default function AgentsPage() {
           newProjectName={newProjectName}
           newStatusNames={newStatusNames}
           newStatusColors={newStatusColors}
+          newSprintFolderName={newSprintFolderName}
           isGeneratingSuggestions={isGeneratingSuggestions}
           onDestinationTypeChange={(type) => setDestinationType(type)}
           onSelectedSpaceChange={setSelectedSpaceId}
@@ -1334,7 +1928,9 @@ export default function AgentsPage() {
           onNewProjectNameChange={setNewProjectName}
           onNewStatusNamesChange={setNewStatusNames}
           onNewStatusColorsChange={setNewStatusColors}
+          onNewSprintFolderNameChange={setNewSprintFolderName}
           onAIAssist={handleAIAssist}
+          isSprintStructure={Object.keys(storiesBySprint).length > 0}
         />
 
         {/* Progress Modal */}
@@ -1396,6 +1992,7 @@ export default function AgentsPage() {
                 });
               }}
               onClose={() => setShowSprintAssistant(false)}
+              onSaveSprints={handleSaveSprintsFromAssistant}
             />
           </DialogContent>
         </Dialog>

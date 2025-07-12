@@ -16,6 +16,10 @@ import type {
 import type { EnhancedSprint } from "@/lib/sprint-creation-service";
 import SprintCreationService from "@/lib/sprint-creation-service";
 import { DEFAULT_WEIGHTS } from "@/types";
+import {
+  getOrCreateNotStartedStatusType,
+  STATUS_TYPES,
+} from "@/lib/status-utils";
 
 // Initialize Anthropic client
 const anthropic = new Anthropic({
@@ -142,11 +146,6 @@ export async function generateTAWOSStories(
             .map((t, i) => `Example ${i + 1}:\n${JSON.stringify(t, null, 2)}`)
             .join("\n\n")}\n`
         : "";
-
-    console.log(
-      "exampleStoriesSection=============================",
-      exampleStoriesSection
-    );
 
     const prompt = `
       Generate ${numberOfStories} high-quality user stories for the following feature:
@@ -1566,12 +1565,6 @@ export async function createSpaceAndProject(
       };
     }
 
-    console.log(
-      `Successfully created ${
-        createdStatuses?.length || 0
-      } statuses for project`
-    );
-
     return {
       success: true,
       spaceId: spaceId,
@@ -1953,6 +1946,8 @@ export async function saveUserStoryToDestination(
     spaceName?: string;
     projectName?: string;
     statusNames?: string[];
+    sprintId?: string;
+    statusId?: string; // <-- Add this
   },
   priorityWeights?: PriorityWeights
 ): Promise<{ success: boolean; error?: string; taskId?: string }> {
@@ -1982,71 +1977,70 @@ export async function saveUserStoryToDestination(
     let projectId: string;
     let statusId: string;
 
-    // Handle new space/project creation
-    if (destination.type === "new") {
-      if (!destination.spaceName || !destination.projectName) {
+    // Handle existing space/project
+    if (
+      !destination.sprintId &&
+      (!destination.spaceId || !destination.projectId)
+    ) {
+      return {
+        success: false,
+        error: "Space ID and project ID are required for existing destinations",
+      };
+    }
+
+    // For sprint mode, we only need spaceId and sprintId
+    if (destination.sprintId) {
+      if (!destination.spaceId) {
         return {
           success: false,
-          error:
-            "Space name and project name are required for new destinations",
+          error: "Space ID is required for sprint destinations",
         };
       }
-
-      const result = await createSpaceAndProject(
-        workspaceId,
-        destination.spaceName,
-        destination.projectName,
-        destination.statusNames || ["To Do", "In Progress", "Review", "Done"]
-      );
-
-      if (!result.success) {
-        return { success: false, error: result.error };
-      }
-
-      spaceId = result.spaceId!;
-      projectId = result.projectId!;
+      spaceId = destination.spaceId;
+      // In sprint mode, we don't have a projectId
+      projectId = ""; // Set to empty string for sprint mode
     } else {
-      // Handle existing space/project
+      // For project mode, we need both spaceId and projectId
       if (!destination.spaceId || !destination.projectId) {
         return {
           success: false,
           error:
-            "Space ID and project ID are required for existing destinations",
+            "Space ID and project ID are required for project destinations",
         };
       }
-
       spaceId = destination.spaceId;
       projectId = destination.projectId;
     }
 
-    // Get project UUID and space UUID
-    const { data: project, error: projectError } = await supabase
-      .from("projects")
-      .select("id, space_id")
-      .eq("project_id", projectId)
-      .eq("workspace_id", workspace.id)
-      .single();
-
-    if (projectError || !project) {
-      return { success: false, error: "Project not found" };
-    }
-
-    // Find a status for this project
-    const { data: projectStatuses } = await supabase
-      .from("statuses")
-      .select("id")
-      .eq("workspace_id", workspace.id)
-      .eq("project_id", project.id)
-      .order("position", { ascending: true })
-      .limit(1);
-
-    if (projectStatuses && projectStatuses.length > 0) {
-      statusId = projectStatuses[0].id;
+    // Find a status for this project or sprint
+    if (destination.sprintId) {
+      // For sprint mode, use the provided statusId or find one
+      if (destination.statusId) {
+        statusId = destination.statusId;
+      } else {
+        return {
+          success: false,
+          error: "Status ID is required for sprint destinations.",
+        };
+      }
     } else {
-      return {
-        success: false,
-        error: "No status found for this project.",
-      };
+      // For project mode, find status by project_id
+      const { data: projectStatuses } = await supabase
+        .from("statuses")
+        .select("id")
+        .eq("workspace_id", workspace.id)
+        .eq("project_id", projectId)
+        .order("position", { ascending: true })
+        .limit(1);
+
+      if (projectStatuses && projectStatuses.length > 0) {
+        statusId = projectStatuses[0].id;
+      } else {
+        return {
+          success: false,
+          error: "No status found for this project.",
+        };
+      }
     }
 
     // Save assigned team member if it's a new member (ID starts with 'member-')
@@ -2248,14 +2242,16 @@ export async function saveUserStoryToDestination(
     };
 
     // Insert the story as a task without parent_task_id initially
-    const { data: newTask, error } = await supabase
+    const { data: insertedTask, error: taskError } = await supabase
       .from("tasks")
       .insert({
-        task_id: taskId,
+        task_id: `t${nanoid(12)}`,
         name: story.title,
         description,
-        status_id: statusId,
+        status_id: destination.statusId || statusId,
         priority: story.priority?.toLowerCase() || "medium",
+        project_id: destination.sprintId ? null : projectId, // null for sprint mode
+        space_id: spaceId,
         estimated_time: story.estimatedTime
           ? Math.round(story.estimatedTime)
           : null,
@@ -2268,8 +2264,6 @@ export async function saveUserStoryToDestination(
         dependency_score: story.dependencyScore,
         velocity: story.velocity ? Math.round(story.velocity) : null,
         assignee_id: assigneeId || null,
-        project_id: project.id,
-        space_id: project.space_id,
         workspace_id: workspace.id,
         created_by: user.id,
         type: "ai-generated",
@@ -2277,13 +2271,14 @@ export async function saveUserStoryToDestination(
         pending_sync: false,
         sync_status: "synced",
         embedding: embedding,
+        sprint_id: destination.sprintId || null,
       })
       .select("id, task_id")
       .single();
 
-    if (error) {
-      console.error("Error saving user story as task:", error);
-      return { success: false, error: error.message };
+    if (taskError) {
+      console.error("Error saving user story:", taskError);
+      return { success: false, error: taskError.message };
     }
 
     // Handle parent-child relationships after task creation
@@ -2300,7 +2295,7 @@ export async function saveUserStoryToDestination(
         const { error: updateError } = await supabase
           .from("tasks")
           .update({ parent_task_id: parentTask.id })
-          .eq("id", newTask.id);
+          .eq("id", insertedTask.id);
 
         if (updateError) {
           console.error(
@@ -2316,7 +2311,7 @@ export async function saveUserStoryToDestination(
     if (story.childTaskIds && story.childTaskIds.length > 0) {
       const { error: updateError } = await supabase
         .from("tasks")
-        .update({ parent_task_id: newTask.id })
+        .update({ parent_task_id: insertedTask.id })
         .in("task_id", story.childTaskIds);
 
       if (updateError) {
@@ -2356,7 +2351,7 @@ export async function saveUserStoryToDestination(
       // Link tag to task
       if (tagId) {
         await supabase.from("task_tags").insert({
-          task_id: newTask.id,
+          task_id: insertedTask.id,
           tag_id: tagId,
         });
       }
@@ -2365,7 +2360,7 @@ export async function saveUserStoryToDestination(
     // Revalidate the project page to show the new task
     revalidatePath(`/${workspaceId}/space/${spaceId}/project/${projectId}`);
 
-    return { success: true, taskId: newTask.task_id };
+    return { success: true, taskId: insertedTask.task_id };
   } catch (error) {
     console.error("Error saving user story to destination:", error);
     return {
@@ -2591,4 +2586,116 @@ function generateFallbackStories(
   }
 
   return fallbackStories;
+}
+
+/**
+ * Create a new sprint folder in a space
+ */
+export async function createSprintFolder({
+  name,
+  spaceId,
+  durationWeeks = 2,
+  sprintStartDayId = null,
+}: {
+  name: string;
+  spaceId: string;
+  durationWeeks?: number;
+  sprintStartDayId?: string | null;
+}): Promise<{ success: boolean; sprintFolder?: any; error?: string }> {
+  try {
+    const supabase = await createServerSupabaseClient();
+    const { data: sprintFolder, error } = await supabase
+      .from("sprint_folders")
+      .insert({
+        name,
+        space_id: spaceId,
+        duration_week: durationWeeks,
+        sprint_start_day_id: sprintStartDayId,
+      })
+      .select()
+      .single();
+    if (error) return { success: false, error: error.message };
+    return { success: true, sprintFolder };
+  } catch (e: any) {
+    return { success: false, error: e.message };
+  }
+}
+
+/**
+ * Create multiple sprints in a sprint folder
+ */
+export async function createSprints({
+  sprints,
+  sprintFolderId,
+  spaceId,
+  workspaceId,
+}: {
+  sprints: Array<{
+    name: string;
+    goal?: string;
+    startDate?: string;
+    endDate?: string;
+    sprint_id?: string;
+    duration?: number;
+  }>;
+  sprintFolderId: string;
+  spaceId: string;
+  workspaceId: string;
+}): Promise<{
+  success: boolean;
+  createdSprints?: any[];
+  createdStatuses?: any[];
+  error?: string;
+}> {
+  try {
+    const supabase = await createServerSupabaseClient();
+    const inserts = sprints.map((s) => ({
+      name: s.name,
+      goal: s.goal || null,
+      start_date: s.startDate || null,
+      end_date: s.endDate || null,
+      sprint_folder_id: sprintFolderId,
+      space_id: spaceId,
+      duration: s.duration,
+    }));
+
+    const { data: newSprint, error } = await supabase
+      .from("sprints")
+      .insert(inserts)
+      .select();
+
+    if (error || !newSprint) {
+      return {
+        success: false,
+        error: `Failed to create project: ${error?.message}`,
+      };
+    }
+
+    const statusInserts = sprints.map((s, idx) => ({
+      name: "Backlog",
+      color: "gray",
+      position: 0,
+      type: "sprint",
+      sprint_id: newSprint[idx].id,
+      space_id: spaceId,
+      workspace_id: workspaceId,
+    }));
+
+    const { data: createdStatuses, error: statusError } = await supabase
+      .from("statuses")
+      .insert(statusInserts)
+      .select();
+
+    if (statusError) {
+      console.error("Failed to create statuses:", statusError);
+      return {
+        success: false,
+        error: `Failed to create statuses: ${statusError.message}`,
+      };
+    }
+
+    return { success: true, createdSprints: newSprint, createdStatuses };
+  } catch (e: any) {
+    return { success: false, error: e.message };
+  }
 }

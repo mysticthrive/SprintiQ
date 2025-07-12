@@ -104,7 +104,7 @@ export default function SignUpPage() {
 
     try {
       const fullName = `${firstName} ${lastName}`.trim();
-      const { error } = await signUp(email, password, {
+      const { data, error } = await signUp(email, password, {
         full_name: fullName,
         company,
       });
@@ -117,6 +117,21 @@ export default function SignUpPage() {
         } else {
           setError(error.message);
         }
+      } else if (data?.user) {
+        // Call API route to save user info
+        await fetch("/api/register-user", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: data.user.id,
+            name: fullName,
+            email,
+            role: "user",
+            company,
+          }),
+        });
+        // Redirect to /access-denied after registration
+        window.location.href = "/access-denied";
       }
     } catch (err: any) {
       console.error("Signup error:", err);
@@ -170,7 +185,7 @@ export default function SignUpPage() {
 
           <div className="space-y-6">
             <h1 className="text-5xl lg:text-6xl font-bold bg-gradient-to-r from-white via-emerald-100 to-emerald-200 bg-clip-text text-transparent leading-tight">
-              Join our beta -
+              Join the next Agile Evolution -
               <br />
               <span className="text-emerald-300">free early access</span>
             </h1>

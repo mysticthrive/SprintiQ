@@ -15,22 +15,18 @@ import {
   TrendingUp,
   AlertTriangle,
   CheckCircle,
-  Clock,
-  User,
   Brain,
   Shield,
   FileText,
   BarChart3,
-  Zap,
-  ArrowRight,
   Info,
   Lightbulb,
   AlertCircle,
   CheckCircle2,
   XCircle,
   Activity,
-  GitBranch,
-  Goal,
+  Save,
+  ChartGantt,
 } from "lucide-react";
 import {
   Select,
@@ -47,6 +43,7 @@ import {
 } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Progress } from "@/components/ui/progress";
+import { nanoid } from "nanoid";
 
 import type { UserStory, TeamMember } from "@/types";
 import type { EnhancedSprint } from "@/lib/sprint-creation-service";
@@ -66,6 +63,10 @@ interface SprintAssistantProps {
   teamMembers: TeamMember[];
   onSprintCreated: (sprint: EnhancedSprint) => void;
   onClose: () => void;
+  onSaveSprints: (
+    sprints: EnhancedSprint[] | ManualSprint[],
+    type: "ai" | "manual"
+  ) => void;
 }
 
 interface ManualSprint {
@@ -105,13 +106,13 @@ export default function SprintAssistant({
   teamMembers,
   onSprintCreated,
   onClose,
+  onSaveSprints,
 }: SprintAssistantProps) {
   const [creationMode, setCreationMode] = useState<"manual" | "ai">("ai");
   const [manualSprints, setManualSprints] = useState<ManualSprint[]>([]);
   const [selectedStories, setSelectedStories] = useState<Set<string>>(
     new Set()
   );
-  const [currentSprint, setCurrentSprint] = useState<ManualSprint | null>(null);
   const [sprintName, setSprintName] = useState("");
   const [sprintDuration, setSprintDuration] = useState(2);
   const [isCreating, setIsCreating] = useState(false);
@@ -272,7 +273,7 @@ export default function SprintAssistant({
       (totalStoryPoints / teamCapacity.totalStoryPoints) * 100;
 
     const newSprint: ManualSprint = {
-      id: `manual-sprint-${Date.now()}`,
+      id: `st${nanoid(6)}`,
       name: sprintName,
       duration: sprintDuration,
       selectedStories: selectedStoryObjects,
@@ -349,10 +350,10 @@ export default function SprintAssistant({
 
   return (
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className="max-w-6xl max-h-[90vh] overflow-hidden">
+      <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Target className="h-5 w-5" />
+            <ChartGantt className="h-5 w-5" />
             Sprint Assistant
           </DialogTitle>
         </DialogHeader>
@@ -532,6 +533,16 @@ export default function SprintAssistant({
                       </div>
                     ))}
                   </div>
+                  {/* Save Sprints Button for Manual Tab */}
+                  <div className="flex justify-end mt-4">
+                    <Button
+                      variant="workspace"
+                      disabled={manualSprints.length === 0}
+                      onClick={() => onSaveSprints(manualSprints, "manual")}
+                    >
+                      Save Sprints
+                    </Button>
+                  </div>
                 </CardContent>
               </Card>
             )}
@@ -609,7 +620,7 @@ export default function SprintAssistant({
                       setSprintDuration(parseInt(value))
                     }
                   >
-                    <SelectTrigger className="w-24">
+                    <SelectTrigger className="w-32">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -649,7 +660,7 @@ export default function SprintAssistant({
                         setSprintDuration(parseInt(value))
                       }
                     >
-                      <SelectTrigger className="w-24">
+                      <SelectTrigger className="w-32">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -739,7 +750,7 @@ export default function SprintAssistant({
               <CardContent>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   <div className="text-center p-3 border rounded">
-                    <div className="text-2xl font-bold text-blue-600">
+                    <div className="text-2xl font-bold text-rose-600">
                       {stories.filter((s) => s.priority === "Critical").length}
                     </div>
                     <div className="text-sm text-muted-foreground">
@@ -770,24 +781,24 @@ export default function SprintAssistant({
               </CardContent>
             </Card>
 
-            <Button
-              onClick={handleCreateAISprint}
-              disabled={isCreating}
-              className="w-full"
-              size="lg"
-            >
-              {isCreating
-                ? "Creating Sprints..."
-                : "Create AI-Optimized Sprints"}
-            </Button>
-            {aiSprints.length > 0 && !showSprintsModal && (
+            <div className="grid grid-cols-2 gap-3">
               <Button
-                className="mt-4 w-full"
+                onClick={handleCreateAISprint}
+                disabled={isCreating}
+                className="w-full"
+              >
+                {isCreating
+                  ? "Creating Sprints..."
+                  : "Create AI-Optimized Sprints"}
+              </Button>
+              <Button
+                className="w-full"
+                disabled={aiSprints.length === 0 && !showSprintsModal}
                 onClick={() => setShowSprintsModal(true)}
               >
                 Show Generated Sprints
               </Button>
-            )}
+            </div>
             <Dialog open={showSprintsModal} onOpenChange={setShowSprintsModal}>
               <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto p-0">
                 <DialogTitle>
@@ -990,6 +1001,16 @@ export default function SprintAssistant({
                 </div>
               </DialogContent>
             </Dialog>
+            <div className="justify-end mt-4 w-full">
+              <Button
+                variant="workspace"
+                disabled={aiSprints.length === 0}
+                onClick={() => onSaveSprints(aiSprints, "ai")}
+                className="w-full"
+              >
+                <Save className="w-4 h-4" /> Save Sprints
+              </Button>
+            </div>
           </TabsContent>
         </Tabs>
 

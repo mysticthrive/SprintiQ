@@ -26,6 +26,10 @@ interface Space {
     project_id: string;
     name: string;
   }[];
+  sprint_folders?: {
+    sprint_folder_id: string;
+    name: string;
+  }[];
 }
 
 interface SaveDestinationModalProps {
@@ -41,6 +45,7 @@ interface SaveDestinationModalProps {
   newProjectName: string;
   newStatusNames: string[];
   newStatusColors: string[];
+  newSprintFolderName: string;
   isGeneratingSuggestions: boolean;
   onDestinationTypeChange: (type: "existing" | "new") => void;
   onSelectedSpaceChange: (spaceId: string) => void;
@@ -49,7 +54,9 @@ interface SaveDestinationModalProps {
   onNewProjectNameChange: (name: string) => void;
   onNewStatusNamesChange: (names: string[]) => void;
   onNewStatusColorsChange: (colors: string[]) => void;
+  onNewSprintFolderNameChange: (name: string) => void;
   onAIAssist: () => void;
+  isSprintStructure?: boolean;
 }
 
 export default function SaveDestinationModal({
@@ -65,6 +72,7 @@ export default function SaveDestinationModal({
   newProjectName,
   newStatusNames,
   newStatusColors,
+  newSprintFolderName,
   isGeneratingSuggestions,
   onDestinationTypeChange,
   onSelectedSpaceChange,
@@ -73,11 +81,15 @@ export default function SaveDestinationModal({
   onNewProjectNameChange,
   onNewStatusNamesChange,
   onNewStatusColorsChange,
+  onNewSprintFolderNameChange,
   onAIAssist,
+  isSprintStructure = false,
 }: SaveDestinationModalProps) {
   const isSaveDisabled =
     destinationType === "existing"
-      ? !selectedSpaceId || !selectedProjectId
+      ? !selectedSpaceId ||
+        (!isSprintStructure && !selectedProjectId) ||
+        (isSprintStructure && !newSprintFolderName)
       : !newSpaceName || !newProjectName;
 
   return (
@@ -115,11 +127,17 @@ export default function SaveDestinationModal({
                 id="existing"
                 variant="workspace"
               />
-              <Label htmlFor="existing">Use Existing Space/Project</Label>
+              <Label htmlFor="existing">
+                Use Existing Space/
+                {isSprintStructure ? "Sprint Folder" : "Project"}
+              </Label>
             </div>
             <div className="flex items-center space-x-2">
               <RadioGroupItem value="new" id="new" variant="workspace" />
-              <Label htmlFor="new">Create New Space/Project</Label>
+              <Label htmlFor="new">
+                Create New Space/
+                {isSprintStructure ? "Sprint Folder" : "Project"}
+              </Label>
             </div>
           </RadioGroup>
 
@@ -144,7 +162,7 @@ export default function SaveDestinationModal({
                 </Select>
               </div>
 
-              {selectedSpaceId && (
+              {selectedSpaceId && !isSprintStructure && (
                 <div className="space-y-2">
                   <Label>Select Project</Label>
                   <Select
@@ -155,18 +173,32 @@ export default function SaveDestinationModal({
                       <SelectValue placeholder="Select a project" />
                     </SelectTrigger>
                     <SelectContent>
-                      {spaces
-                        .find((s) => s.space_id === selectedSpaceId)
-                        ?.projects.map((project) => (
-                          <SelectItem
-                            key={project.project_id}
-                            value={project.project_id}
-                          >
-                            {project.name}
-                          </SelectItem>
-                        ))}
+                      {(
+                        spaces.find((s) => s.space_id === selectedSpaceId)
+                          ?.projects || []
+                      ).map((item: any) => (
+                        <SelectItem
+                          key={item.project_id}
+                          value={item.project_id}
+                        >
+                          {item.name}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
+                </div>
+              )}
+
+              {selectedSpaceId && isSprintStructure && (
+                <div className="space-y-2">
+                  <Label>Sprint Folder Name</Label>
+                  <Input
+                    value={newSprintFolderName}
+                    onChange={(e) =>
+                      onNewSprintFolderNameChange(e.target.value)
+                    }
+                    placeholder="Enter sprint folder name"
+                  />
                 </div>
               )}
             </div>
@@ -183,76 +215,57 @@ export default function SaveDestinationModal({
                 />
               </div>
               <div className="space-y-2">
-                <Label>Project Name</Label>
+                <Label>
+                  {isSprintStructure ? "Sprint Folder Name" : "Project Name"}
+                </Label>
                 <Input
                   value={newProjectName}
                   onChange={(e) => onNewProjectNameChange(e.target.value)}
-                  placeholder="Enter project name"
+                  placeholder={`Enter ${
+                    isSprintStructure ? "sprint folder" : "project"
+                  } name`}
                 />
               </div>
-              <div className="space-y-2">
-                <Label>Statuses</Label>
+              {!isSprintStructure && (
                 <div className="space-y-2">
-                  {newStatusNames.map((status, index) => (
-                    <div key={index} className="flex gap-2">
-                      <Input
-                        value={status}
-                        onChange={(e) => {
-                          const newNames = [...newStatusNames];
-                          newNames[index] = e.target.value;
-                          onNewStatusNamesChange(newNames);
-                        }}
-                        placeholder={`Status ${index + 1}`}
-                      />
-                      <Select
-                        value={newStatusColors[index]}
-                        onValueChange={(color) => {
-                          const newColors = [...newStatusColors];
-                          newColors[index] = color;
-                          onNewStatusColorsChange(newColors);
-                        }}
-                      >
-                        <SelectTrigger className="w-[100px]">
-                          <SelectValue placeholder="Color" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="gray">Gray</SelectItem>
-                          <SelectItem value="blue">Blue</SelectItem>
-                          <SelectItem value="green">Green</SelectItem>
-                          <SelectItem value="yellow">Yellow</SelectItem>
-                          <SelectItem value="red">Red</SelectItem>
-                          <SelectItem value="purple">Purple</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        onClick={() => {
-                          onNewStatusNamesChange(
-                            newStatusNames.filter((_, i) => i !== index)
-                          );
-                          onNewStatusColorsChange(
-                            newStatusColors.filter((_, i) => i !== index)
-                          );
-                        }}
-                      >
-                        <X className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  ))}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      onNewStatusNamesChange([...newStatusNames, ""]);
-                      onNewStatusColorsChange([...newStatusColors, "gray"]);
-                    }}
-                  >
-                    <Plus className="h-4 w-4 mr-1" />
-                    Add Status
-                  </Button>
+                  <Label>Statuses</Label>
+                  <div className="space-y-2">
+                    {newStatusNames.map((status, index) => (
+                      <div key={index} className="flex gap-2">
+                        <Input
+                          value={status}
+                          onChange={(e) => {
+                            const updated = [...newStatusNames];
+                            updated[index] = e.target.value;
+                            onNewStatusNamesChange(updated);
+                          }}
+                          placeholder="Status name"
+                        />
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            const updated = [...newStatusNames];
+                            updated.splice(index, 1);
+                            onNewStatusNamesChange(updated);
+                          }}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        onNewStatusNamesChange([...newStatusNames, ""])
+                      }
+                    >
+                      <Plus className="h-4 w-4 mr-1" /> Add Status
+                    </Button>
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           )}
         </div>
