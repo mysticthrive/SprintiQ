@@ -165,8 +165,6 @@ export function SettingsProfileView({ profile, email }: ProfileFormProps) {
   // Get the selected timezone object for display
   const selectedTimezone = timezones.find((tz) => tz.id === timezone);
 
-  console.log("timezone", timezones);
-
   const handleAvatarFileSelect = (
     event: React.ChangeEvent<HTMLInputElement>
   ) => {

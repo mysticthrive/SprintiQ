@@ -130,6 +130,7 @@ export default function SprintAssistant({
   const [selectedManualSprint, setSelectedManualSprint] =
     useState<ManualSprint | null>(null);
   const [showManualSprintDetails, setShowManualSprintDetails] = useState(false);
+  const [isGeneratingGoal, setIsGeneratingGoal] = useState(false);
 
   // Calculate end date based on start date and duration
   const sprintEndDate = useMemo(() => {
@@ -346,6 +347,53 @@ export default function SprintAssistant({
 
   const handleRemoveSprint = (sprintId: string) => {
     setManualSprints(manualSprints.filter((s) => s.id !== sprintId));
+  };
+
+  const handleGenerateAIGoal = async () => {
+    if (selectedStories.size === 0) {
+      toast({
+        title: "No stories selected",
+        description: "Please select stories first to generate a goal.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsGeneratingGoal(true);
+    try {
+      const selectedStoryObjects = stories.filter((story) =>
+        selectedStories.has(story.id)
+      );
+
+      const response = await fetch("/api/generate-sprint-goal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          stories: selectedStoryObjects,
+          projectContext: {
+            startDate: sprintStartDate || new Date().toISOString(),
+          },
+        }),
+      });
+      const data = await response.json();
+      if (data.goal) {
+        setSprintGoal(data.goal);
+        toast({
+          title: "AI Goal Generated",
+          description: "Generated a meaningful sprint goal using AI.",
+        });
+      } else {
+        throw new Error(data.error || "Failed to generate AI goal.");
+      }
+    } catch (error) {
+      toast({
+        title: "Goal generation failed",
+        description: "Could not generate AI goal. Please enter one manually.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsGeneratingGoal(false);
+    }
   };
 
   return (
@@ -691,6 +739,10 @@ export default function SprintAssistant({
                         <CheckCircle className="h-3 w-3 text-green-500" />
                         Risk assessment & mitigation
                       </li>
+                      <li className="flex items-center gap-2">
+                        <CheckCircle className="h-3 w-3 text-green-500" />
+                        AI-powered sprint goal generation
+                      </li>
                     </ul>
                   </div>
                 </CardContent>
@@ -788,7 +840,7 @@ export default function SprintAssistant({
                 className="w-full"
               >
                 {isCreating
-                  ? "Creating Sprints..."
+                  ? "Creating AI Sprints & Goals..."
                   : "Create AI-Optimized Sprints"}
               </Button>
               <Button
@@ -1050,15 +1102,34 @@ export default function SprintAssistant({
               </div>
 
               {/* Sprint Goal */}
-              <div className="flex items-center gap-2">
-                <Label htmlFor="sprint-goal">Sprint Goal:</Label>
-                <Input
-                  id="sprint-goal"
-                  value={sprintGoal}
-                  onChange={(e) => setSprintGoal(e.target.value)}
-                  placeholder="Enter sprint goal"
-                  className="w-80"
-                />
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="sprint-goal">Sprint Goal:</Label>
+                  <Input
+                    id="sprint-goal"
+                    value={sprintGoal}
+                    onChange={(e) => setSprintGoal(e.target.value)}
+                    placeholder="Enter sprint goal or generate with AI"
+                    className="w-80"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleGenerateAIGoal}
+                    disabled={isGeneratingGoal || selectedStories.size === 0}
+                    className="flex items-center gap-2"
+                  >
+                    <Brain className="h-4 w-4" />
+                    {isGeneratingGoal ? "Generating..." : "Generate AI Goal"}
+                  </Button>
+                </div>
+                {selectedStories.size > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    AI will analyze your selected stories to create a meaningful
+                    sprint goal.
+                  </p>
+                )}
               </div>
 
               {/* Start Date and End Date */}

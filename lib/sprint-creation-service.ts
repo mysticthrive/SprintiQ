@@ -3,7 +3,6 @@
 
 import type { UserStory, TeamMember, Sprint } from "@/types";
 import { nanoid } from "nanoid";
-
 export interface SprintCreationConfig {
   // Sprint Configuration
   sprintDuration: number; // Default 14 days (2 weeks)
@@ -825,11 +824,17 @@ export class SprintCreationService {
       sprintCapacity
     );
 
+    const response = await fetch("/api/generate-sprint-goal", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        stories: sprintStories,
+        projectContext: projectContext,
+      }),
+    });
+    const data = await response.json();
     // Generate sprint goal using AI
-    const sprintGoal = await this.generateSprintGoal(
-      sprintStories,
-      projectContext
-    );
+    const sprintGoal = data.goal;
 
     // Create sprint object
     const sprint: EnhancedSprint = {
@@ -957,12 +962,209 @@ export class SprintCreationService {
   }
 
   /**
-   * Generate sprint goal based on the unique stories in the sprint
+   * Generate sprint goal using Claude AI based on the sprint's stories
    */
-  private async generateSprintGoal(
+  public async generateSprintGoal(
     sprintStories: UserStory[],
     projectContext: any
   ): Promise<string> {
+    try {
+      if (!sprintStories || sprintStories.length === 0) {
+        return "Complete planned user stories for this sprint.";
+      }
+
+      // Import Anthropic SDK and create client INSIDE the function
+      const { Anthropic } = await import("@anthropic-ai/sdk");
+      const anthropic = new Anthropic({
+        apiKey: process.env.NEXT_PUBLIC_CLAUDE_API_KEY,
+      });
+
+      // Debug log for env variable
+      console.log(
+        "[DEBUG] CLAUDE_API_KEY:",
+        process.env.NEXT_PUBLIC_CLAUDE_API_KEY
+      );
+
+      if (!process.env.NEXT_PUBLIC_CLAUDE_API_KEY) {
+        console.warn(
+          "Claude API key not available, using fallback goal generation"
+        );
+        return this.generateFallbackSprintGoal(sprintStories);
+      }
+
+      // Prepare stories data for AI analysis
+      const storiesData = sprintStories.map((story) => ({
+        title: story.title,
+        description: story.description,
+        role: story.role,
+        want: story.want,
+        benefit: story.benefit,
+        priority: story.priority,
+        storyPoints: story.storyPoints,
+        businessValue: story.businessValue,
+        tags: story.tags || [],
+      }));
+
+      // Analyze stories to extract key insights
+      const totalStoryPoints = sprintStories.reduce(
+        (sum, s) => sum + (s.storyPoints || 0),
+        0
+      );
+      const priorities = sprintStories.map((s) => s.priority).filter(Boolean);
+      const roles = [
+        ...new Set(sprintStories.map((s) => s.role).filter(Boolean)),
+      ];
+      const tags = [...new Set(sprintStories.flatMap((s) => s.tags || []))];
+
+      // Extract common themes and business objectives
+      const wants = sprintStories.map((s) => s.want).filter(Boolean);
+      const benefits = sprintStories.map((s) => s.benefit).filter(Boolean);
+
+      // Calculate business value metrics
+      const avgBusinessValue =
+        sprintStories.reduce((sum, s) => sum + (s.businessValue || 0), 0) /
+        sprintStories.length;
+      const highValueStories = sprintStories.filter(
+        (s) => (s.businessValue || 0) >= 4
+      );
+
+      // Analyze story patterns and themes
+      const storyThemes = this.analyzeStoryThemes(sprintStories);
+      const userJourney = this.analyzeUserJourney(sprintStories);
+      const businessImpact = this.analyzeBusinessImpact(sprintStories);
+
+      const prompt = `
+You are an expert Agile coach and product manager with deep experience in creating meaningful sprint goals. Your task is to analyze the user stories in this sprint and create a compelling, business-focused sprint goal that captures the essence of what the team will deliver.
+
+SPRINT CONTEXT:
+- Sprint Duration: ${this.config.sprintDuration / 7} weeks
+- Total Stories: ${sprintStories.length}
+- Total Story Points: ${totalStoryPoints}
+- Team Capacity: ${(this.config.sprintDuration / 7) * 40} hours (estimated)
+
+STORY ANALYSIS:
+${storiesData
+  .map(
+    (story, index) => `
+${index + 1}. **${story.title}**
+   - User Role: ${story.role}
+   - User Want: ${story.want}
+   - Business Benefit: ${story.benefit}
+   - Priority: ${story.priority}
+   - Story Points: ${story.storyPoints}
+   - Business Value: ${story.businessValue}/5
+   - Technical Tags: ${story.tags.join(", ") || "None"}
+   - Full Description: ${story.description}
+`
+  )
+  .join("\n")}
+
+KEY INSIGHTS:
+- User Roles: ${roles.join(", ")}
+- Priority Distribution: ${priorities.join(", ")}
+- Technical Focus: ${tags.join(", ")}
+- Average Business Value: ${avgBusinessValue.toFixed(1)}/5
+- High-Value Stories: ${highValueStories.length} (${(
+        (highValueStories.length / sprintStories.length) *
+        100
+      ).toFixed(0)}%)
+
+STORY THEME ANALYSIS:
+- Primary Theme: ${storyThemes.primaryTheme}
+- Secondary Themes: ${storyThemes.secondaryThemes.join(", ")}
+- Technical Focus Areas: ${storyThemes.technicalFocus.join(", ")}
+
+USER JOURNEY ANALYSIS:
+- Primary User: ${userJourney.primaryUser}
+- Key User Actions: ${userJourney.userActions.join(", ")}
+- User Goals: ${userJourney.userGoals.join(", ")}
+
+BUSINESS IMPACT ANALYSIS:
+- Business Objectives: ${businessImpact.businessObjectives.join(", ")}
+- Value Metrics: ${businessImpact.valueMetrics.join(", ")}
+- Impact Level: ${businessImpact.impactLevel}
+
+ANALYSIS INSTRUCTIONS:
+1. **Identify the primary user journey or business objective** that these stories collectively address
+2. **Analyze the business value and user impact** - what will users be able to do that they couldn't before?
+3. **Look for patterns in user roles, wants, and benefits** to understand the unified goal
+4. **Consider the technical complexity and business priority** to understand the scope
+5. **Identify the measurable outcome** that stakeholders will see as success
+
+FOCUS ON:
+- The ${userJourney.primaryUser} experience and their main goals
+- The ${storyThemes.primaryTheme} functionality and its business value
+- How the ${businessImpact.businessObjectives.join(
+        ", "
+      )} objectives will be achieved
+- The ${businessImpact.impactLevel} impact level and its significance
+
+SPRINT GOAL REQUIREMENTS:
+- **Business-focused**: Focus on user value and business outcomes, not technical implementation
+- **Unified objective**: Capture the main theme that connects all stories
+- **Measurable success**: Stakeholders should understand what success looks like
+- **Inspiring**: Motivate the team with clear purpose
+- **Concise**: 1-2 sentences maximum
+- **User-centric**: Use language that focuses on user experience and business value
+
+EXAMPLES OF GOOD SPRINT GOALS:
+- "Enable secure user authentication and account management to improve user onboarding and retention"
+- "Deliver core dashboard functionality to provide users with real-time insights and data visualization"
+- "Implement payment processing and order management to enable e-commerce transactions"
+- "Build user profile and preferences system to personalize the user experience"
+- "Create comprehensive reporting and analytics to empower data-driven decision making"
+- "Establish robust data management and backup systems to ensure business continuity"
+
+EXAMPLES OF BAD SPRINT GOALS (avoid these):
+- "Deliver the following key stories: User Login and Password Reset"
+- "Focus on delivering: Authentication, Dashboard, Profile"
+- "Complete 5 user stories with 25 story points"
+- "Implement user authentication system and user dashboard interface"
+
+GOAL GENERATION GUIDELINES:
+- Start with the primary user action or business capability
+- Include the business outcome or user benefit
+- Use active, present-tense language
+- Focus on the "what" and "why" rather than the "how"
+- Make it specific enough to measure success
+
+Based on your analysis of the stories above, create a compelling sprint goal that captures the unified business objective and user value these stories will deliver.
+
+Return ONLY the sprint goal text, no additional formatting or explanations.
+`;
+
+      const message = await anthropic.messages.create({
+        model: "claude-opus-4-20250514",
+        max_tokens: 2000,
+        temperature: 0.7,
+        messages: [
+          {
+            role: "user",
+            content: prompt,
+          },
+        ],
+      });
+
+      const goal = message.content[0].text.trim();
+
+      console.log("goal", goal);
+
+      if (goal && goal.length > 10 && goal.length < 500) {
+        return goal;
+      } else {
+        console.warn("AI-generated goal was invalid, using fallback");
+        return this.generateFallbackSprintGoal(sprintStories);
+      }
+    } catch (error) {
+      console.warn("Could not generate AI sprint goal, using fallback:", error);
+      return this.generateFallbackSprintGoal(sprintStories);
+    }
+  }
+
+  /**
+   * Generate fallback sprint goal when AI is not available
+   */
+  private generateFallbackSprintGoal(sprintStories: UserStory[]): string {
     try {
       if (!sprintStories || sprintStories.length === 0) {
         return "Complete planned user stories for this sprint.";
@@ -985,7 +1187,7 @@ export class SprintCreationService {
       const uniqueActions = Array.from(new Set(mainActions)).slice(0, 3);
       return `Focus on delivering: ${uniqueActions.join(", ")}.`;
     } catch (error) {
-      console.warn("Could not generate sprint goal, using default");
+      console.warn("Could not generate fallback sprint goal, using default");
       return `Complete ${sprintStories.length} user stories focused on delivering core functionality and user value.`;
     }
   }
@@ -1085,6 +1287,141 @@ export class SprintCreationService {
       "story",
     ];
     return stopWords.includes(word.toLowerCase());
+  }
+
+  /**
+   * Analyze story themes to identify common patterns
+   */
+  private analyzeStoryThemes(stories: UserStory[]): {
+    primaryTheme: string;
+    secondaryThemes: string[];
+    technicalFocus: string[];
+  } {
+    const allText = stories
+      .map((s) => `${s.title} ${s.description} ${s.want} ${s.benefit}`)
+      .join(" ")
+      .toLowerCase();
+
+    // Extract common words and themes
+    const words = allText
+      .split(/\s+/)
+      .filter((word) => word.length > 3 && !this.isStopWord(word));
+    const wordCount = new Map<string, number>();
+    words.forEach((word) => {
+      wordCount.set(word, (wordCount.get(word) || 0) + 1);
+    });
+
+    const sortedWords = Array.from(wordCount.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([word]) => word);
+
+    // Identify technical focus from tags
+    const allTags = stories.flatMap((s) => s.tags || []);
+    const tagCount = new Map<string, number>();
+    allTags.forEach((tag) => {
+      tagCount.set(tag, (tagCount.get(tag) || 0) + 1);
+    });
+
+    const technicalFocus = Array.from(tagCount.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([tag]) => tag);
+
+    return {
+      primaryTheme: sortedWords[0] || "feature",
+      secondaryThemes: sortedWords.slice(1, 4),
+      technicalFocus,
+    };
+  }
+
+  /**
+   * Analyze user journey patterns
+   */
+  private analyzeUserJourney(stories: UserStory[]): {
+    primaryUser: string;
+    userActions: string[];
+    userGoals: string[];
+  } {
+    const roles = stories.map((s) => s.role).filter(Boolean);
+    const wants = stories.map((s) => s.want).filter(Boolean);
+    const benefits = stories.map((s) => s.benefit).filter(Boolean);
+
+    // Find most common role
+    const roleCount = new Map<string, number>();
+    roles.forEach((role) => {
+      roleCount.set(role, (roleCount.get(role) || 0) + 1);
+    });
+
+    const primaryUser =
+      Array.from(roleCount.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] ||
+      "user";
+
+    // Extract user actions from "want" statements
+    const userActions = wants
+      .map((want) => {
+        const match = want.match(/to (.+?)(?: so that|$)/i);
+        return match ? match[1].trim() : want;
+      })
+      .filter(Boolean);
+
+    // Extract user goals from "benefit" statements
+    const userGoals = benefits
+      .map((benefit) => {
+        const match = benefit.match(/so that (.+?)(?:\.|$)/i);
+        return match ? match[1].trim() : benefit;
+      })
+      .filter(Boolean);
+
+    return {
+      primaryUser,
+      userActions: [...new Set(userActions)].slice(0, 5),
+      userGoals: [...new Set(userGoals)].slice(0, 5),
+    };
+  }
+
+  /**
+   * Analyze business impact and value
+   */
+  private analyzeBusinessImpact(stories: UserStory[]): {
+    businessObjectives: string[];
+    valueMetrics: string[];
+    impactLevel: "high" | "medium" | "low";
+  } {
+    const benefits = stories.map((s) => s.benefit).filter(Boolean);
+    const businessValues = stories.map((s) => s.businessValue || 0);
+    const avgValue =
+      businessValues.reduce((sum, val) => sum + val, 0) / businessValues.length;
+
+    // Extract business objectives from benefits
+    const businessObjectives = benefits
+      .map((benefit) => {
+        const match = benefit.match(/so that (.+?)(?:\.|$)/i);
+        return match ? match[1].trim() : benefit;
+      })
+      .filter(Boolean)
+      .slice(0, 5);
+
+    // Identify value metrics
+    const valueMetrics = benefits
+      .map((benefit) => {
+        const metrics = benefit.match(
+          /(?:improve|increase|reduce|enable|provide|support|enhance) (.+?)(?:\.|$)/gi
+        );
+        return metrics ? metrics.map((m) => m.trim()) : [];
+      })
+      .flat()
+      .filter(Boolean)
+      .slice(0, 5);
+
+    const impactLevel =
+      avgValue >= 4 ? "high" : avgValue >= 2.5 ? "medium" : "low";
+
+    return {
+      businessObjectives: [...new Set(businessObjectives)],
+      valueMetrics: [...new Set(valueMetrics)],
+      impactLevel,
+    };
   }
 
   /**

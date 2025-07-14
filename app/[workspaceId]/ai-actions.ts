@@ -11,15 +11,10 @@ import { getOptimalTeamAssignment } from "@/lib/supabase-vector-service";
 import type {
   TeamMember,
   EnhancedStoryGenerationParams,
-  Sprint,
 } from "@/types";
 import type { EnhancedSprint } from "@/lib/sprint-creation-service";
 import SprintCreationService from "@/lib/sprint-creation-service";
 import { DEFAULT_WEIGHTS } from "@/types";
-import {
-  getOrCreateNotStartedStatusType,
-  STATUS_TYPES,
-} from "@/lib/status-utils";
 
 // Initialize Anthropic client
 const anthropic = new Anthropic({
