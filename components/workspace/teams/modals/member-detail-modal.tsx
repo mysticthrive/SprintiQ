@@ -181,45 +181,6 @@ export default function MemberDetailModal({
                 Detailed information about this team member
               </DialogDescription>
             </div>
-            <div className="flex gap-2">
-              {!isEditing ? (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setIsEditing(true)}
-                  className="workspace-surface-secondary border workspace-border workspace-text-secondary hover:workspace-hover"
-                >
-                  <Edit2 className="h-4 w-4 mr-2" />
-                  Edit
-                </Button>
-              ) : (
-                <>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleCancel}
-                    disabled={loading}
-                    className="workspace-surface-secondary border workspace-border workspace-text-secondary hover:workspace-hover"
-                  >
-                    <X className="h-4 w-4 mr-2" />
-                    Cancel
-                  </Button>
-                  <Button
-                    size="sm"
-                    onClick={handleSave}
-                    disabled={loading}
-                    className="workspace-primary text-white hover:workspace-primary-hover"
-                  >
-                    {loading ? (
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    ) : (
-                      <Save className="h-4 w-4 mr-2" />
-                    )}
-                    Save
-                  </Button>
-                </>
-              )}
-            </div>
           </div>
         </DialogHeader>
 
@@ -447,13 +408,45 @@ export default function MemberDetailModal({
         </div>
 
         <DialogFooter>
-          <Button
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-            className="workspace-surface-secondary border workspace-border workspace-text-secondary hover:workspace-hover"
-          >
-            Close
-          </Button>
+          <div className="flex gap-2">
+            {!isEditing ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsEditing(true)}
+                className="workspace-surface-secondary border workspace-border workspace-text-secondary hover:workspace-hover"
+              >
+                <Edit2 className="h-4 w-4 mr-2" />
+                Edit
+              </Button>
+            ) : (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleCancel}
+                  disabled={loading}
+                  className="workspace-surface-secondary border workspace-border workspace-text-secondary hover:workspace-hover"
+                >
+                  <X className="h-4 w-4 mr-2" />
+                  Cancel
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={handleSave}
+                  disabled={loading}
+                  className="workspace-primary text-white hover:workspace-primary-hover"
+                >
+                  {loading ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Save className="h-4 w-4 mr-2" />
+                  )}
+                  Save
+                </Button>
+              </>
+            )}
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

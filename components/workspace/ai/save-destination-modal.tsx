@@ -98,19 +98,6 @@ export default function SaveDestinationModal({
         <DialogHeader>
           <DialogTitle className="flex justify-between items-center">
             <span>Save Stories</span>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={onAIAssist}
-              disabled={isGeneratingSuggestions && destinationType == "new"}
-            >
-              {isGeneratingSuggestions ? (
-                <Loader2 className="h-4 w-4 animate-spin mr-1" />
-              ) : (
-                <Wand2 className="h-4 w-4 mr-1" />
-              )}
-              AI Suggest
-            </Button>
           </DialogTitle>
         </DialogHeader>
         <div className="space-y-4 py-4">
@@ -270,16 +257,34 @@ export default function SaveDestinationModal({
           )}
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button
-            variant="workspace"
-            onClick={onSave}
-            disabled={isSaveDisabled}
-          >
-            Save Stories
-          </Button>
+          <div className="flex items-center justify-between w-full">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onAIAssist}
+              disabled={isGeneratingSuggestions && destinationType == "new"}
+            >
+              {isGeneratingSuggestions ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-1" />
+              ) : (
+                <Wand2 className="h-4 w-4 mr-1" />
+              )}
+              AI Suggest
+            </Button>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={onClose}>
+                Cancel
+              </Button>
+              <Button
+                variant="workspace"
+                onClick={onSave}
+                size="sm"
+                disabled={isSaveDisabled}
+              >
+                Save Stories
+              </Button>
+            </div>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

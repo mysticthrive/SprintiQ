@@ -316,15 +316,6 @@ export default function TeamsSidebar({
           <Plus className="h-4 w-4 mr-2" />
           Create Team
         </Button>
-        <Button
-          variant="outline"
-          onClick={handleAIAssistant}
-          className="w-full workspace-surface-secondary border workspace-border workspace-text-secondary hover:workspace-hover"
-          size="sm"
-        >
-          <Bot className="h-4 w-4 mr-2" />
-          AI Assistant
-        </Button>
       </div>
 
       {/* Modals */}

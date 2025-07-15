@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -27,6 +27,8 @@ import {
   Activity,
   Save,
   ChartGantt,
+  Loader2,
+  Wand2,
 } from "lucide-react";
 import {
   Select,
@@ -57,6 +59,8 @@ import {
   getRiskColor,
   getUtilizationColor,
 } from "@/lib/utils";
+import { useAuth } from "@/contexts/auth-context";
+import { trackStoryGenerationSession } from "@/app/[workspaceId]/ai-actions";
 
 interface SprintAssistantProps {
   stories: UserStory[];
@@ -131,6 +135,9 @@ export default function SprintAssistant({
     useState<ManualSprint | null>(null);
   const [showManualSprintDetails, setShowManualSprintDetails] = useState(false);
   const [isGeneratingGoal, setIsGeneratingGoal] = useState(false);
+  const { user } = useAuth();
+  // Manual sprints creation timer
+  const manualSprintStartRef = useRef<number | null>(null);
 
   // Calculate end date based on start date and duration
   const sprintEndDate = useMemo(() => {
@@ -296,10 +303,16 @@ export default function SprintAssistant({
       title: "Sprint created",
       description: `Created ${sprintName} with ${selectedStoryObjects.length} stories.`,
     });
+
+    // Start timer for manual sprints creation if not already started
+    if (!manualSprintStartRef.current) {
+      manualSprintStartRef.current = Date.now();
+    }
   };
 
   const handleCreateAISprint = async () => {
     setIsCreating(true);
+    const sprintGenStart = Date.now();
     try {
       const sprints = await createEnhancedSprint(stories, teamMembers, {
         sprintDuration: sprintDuration * 7, // Convert weeks to days
@@ -321,6 +334,19 @@ export default function SprintAssistant({
           Array.isArray(sprints) ? sprints.length : 1
         } sprints using AI optimization.`,
       });
+      // Track sprints_creation duration
+      if (user) {
+        const sprintGenDuration = Date.now() - sprintGenStart;
+        await trackStoryGenerationSession({
+          userId: user.id,
+          storyCount: Array.isArray(sprints) ? sprints.length : 1,
+          feature: `AI-Optimized Sprints for ${stories.length} stories`,
+          complexity: "moderate", // or infer from stories if needed
+          teamSize: teamMembers.length,
+          timestamp: sprintGenDuration,
+          eventType: "sprints_creation",
+        });
+      }
     } catch (error) {
       toast({
         title: "Sprint creation failed",
@@ -394,6 +420,26 @@ export default function SprintAssistant({
     } finally {
       setIsGeneratingGoal(false);
     }
+  };
+
+  const handleSaveManualSprints = async () => {
+    // ... existing code ...
+    // Track sprints_creation duration for manual method
+    if (user && manualSprintStartRef.current) {
+      const manualDuration = Date.now() - manualSprintStartRef.current;
+      await trackStoryGenerationSession({
+        userId: user.id,
+        storyCount: manualSprints.length,
+        feature: `Manual Sprints for ${stories.length} stories`,
+        complexity: "moderate",
+        teamSize: teamMembers.length,
+        timestamp: manualDuration,
+        eventType: "sprints_creation",
+        method: "manual",
+      });
+      manualSprintStartRef.current = null;
+    }
+    onSaveSprints(manualSprints, "manual");
   };
 
   return (
@@ -586,7 +632,7 @@ export default function SprintAssistant({
                     <Button
                       variant="workspace"
                       disabled={manualSprints.length === 0}
-                      onClick={() => onSaveSprints(manualSprints, "manual")}
+                      onClick={handleSaveManualSprints}
                     >
                       Save Sprints
                     </Button>
@@ -1120,8 +1166,11 @@ export default function SprintAssistant({
                     disabled={isGeneratingGoal || selectedStories.size === 0}
                     className="flex items-center gap-2"
                   >
-                    <Brain className="h-4 w-4" />
-                    {isGeneratingGoal ? "Generating..." : "Generate AI Goal"}
+                    {isGeneratingGoal ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Wand2 className="h-4 w-4" />
+                    )}
                   </Button>
                 </div>
                 {selectedStories.size > 0 && (

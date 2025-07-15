@@ -39,6 +39,7 @@ import InviteMembersModal from "../modals/invite-members-modal";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { LoadingLink } from "@/components/ui/loading-link";
 import { getAvatarInitials } from "@/lib/utils";
+import WeeklySurveyModalWrapper from "../modals/weekly-survey-modal-wrapper";
 
 interface WorkspaceSidebarProps {
   workspace: Workspace;
@@ -108,304 +109,311 @@ export default function WorkspaceSidebar({
   };
 
   return (
-    <div
-      className={`${
-        isCollapsed ? "w-16" : "w-64"
-      } workspace-primary-sidebar-bg text-white flex flex-col transition-all duration-300 relative rounded-xl border border-white/10 backdrop-blur-sm shadow-2xl overflow-hidden`}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-    >
-      {/* Gradient Overlay */}
-      <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent pointer-events-none" />
+    <>
+      <WeeklySurveyModalWrapper />
+      <div
+        className={`${
+          isCollapsed ? "w-16" : "w-64"
+        } workspace-primary-sidebar-bg text-white flex flex-col transition-all duration-300 relative rounded-xl border border-white/10 backdrop-blur-sm shadow-2xl overflow-hidden`}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+      >
+        {/* Gradient Overlay */}
+        <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent pointer-events-none" />
 
-      {/* Workspace Header */}
-      <div className="relative p-2 border-b border-white/10 bg-gradient-to-r from-white/5 to-transparent backdrop-blur-sm">
-        {!isCollapsed && (
-          <div className="flex p-2">
-            <Image
-              src="https://vttwakzntflxuylenszu.supabase.co/storage/v1/object/public/images/SprintiQ/sprintiq-logo.png"
-              alt="sprintiq-logo"
-              width={140}
-              height={140}
-            />
-          </div>
-        )}
-
-        {isCollapsed && (
-          <div className="flex justify-center">
-            <div className="relative group">
+        {/* Workspace Header */}
+        <div className="relative p-2 border-b border-white/10 bg-gradient-to-r from-white/5 to-transparent backdrop-blur-sm">
+          {!isCollapsed && (
+            <div className="flex p-2">
               <Image
-                src="/images/sprint-icon.png"
+                src="https://vttwakzntflxuylenszu.supabase.co/storage/v1/object/public/images/SprintiQ/sprintiq-logo.png"
                 alt="sprintiq-logo"
-                width={80}
-                height={80}
-                className="p-2"
+                width={140}
+                height={140}
               />
             </div>
-          </div>
-        )}
-
-        {/* Collapse/Expand Button */}
-        <button
-          onClick={() => setIsCollapsed(!isCollapsed)}
-          className={`absolute top-1/2 -translate-y-1/2 -right-4 w-8 h-8 bg-gradient-to-br from-gray-800 to-gray-900 border border-white/20 rounded-full flex items-center justify-center hover:from-gray-700 hover:to-gray-800 transition-all duration-300 z-10 shadow-lg backdrop-blur-sm ${
-            isHovered
-              ? "opacity-100 scale-100 translate-x-0"
-              : "opacity-0 scale-95 translate-x-2"
-          }`}
-        >
-          {isCollapsed ? (
-            <ChevronRight className="h-4 w-4 text-white/80" />
-          ) : (
-            <ChevronLeft className="h-4 w-4 text-white/80" />
           )}
-        </button>
-      </div>
 
-      {/* Navigation */}
-      <nav
-        className={`flex-1 px-2 pb-2 space-y-2 relative z-10 ${
-          isCollapsed ? "pt-2 px-3" : "pt-5 px-2"
-        }`}
-      >
-        {navigation.map((item, index) => {
-          let isActive = false;
-
-          // Helper function to check if path matches with both /app and non-/app prefixes
-          const pathMatches = (basePath: string) => {
-            return (
-              pathname === basePath ||
-              pathname === `/app${basePath}` ||
-              pathname.startsWith(`${basePath}/`) ||
-              pathname.startsWith(`/app${basePath}/`)
-            );
-          };
-
-          // Home: active for exact home paths
-          if (item.name === "Home") {
-            isActive =
-              pathname === `/${workspaceId}/space` ||
-              pathname === `/${workspaceId}/task` ||
-              pathname === `/app/${workspaceId}` ||
-              pathname === `/${workspaceId}/home` ||
-              pathname === `/app/${workspaceId}/home`;
-          }
-
-          // Teams: active for teams paths
-          else if (item.name === "Teams") {
-            isActive = pathMatches(`/${workspaceId}/teams`);
-          }
-
-          // Workspaces: active for workspaces settings paths
-          else if (item.name === "Workspaces") {
-            isActive = pathMatches(`/${workspaceId}/settings/workspaces`);
-          }
-
-          // Analytics: active for analytics paths
-          else if (item.name === "Analytics") {
-            isActive = pathMatches(`/${workspaceId}/analytics`);
-          }
-
-          // Settings: active for settings paths (excluding workspaces)
-          else if (item.name === "Settings") {
-            isActive =
-              (pathname.startsWith(`/${workspaceId}/settings`) ||
-                pathname.startsWith(`/app/${workspaceId}/settings`)) &&
-              !pathname.startsWith(`/${workspaceId}/settings/workspaces`) &&
-              !pathname.startsWith(`/app/${workspaceId}/settings/workspaces`);
-          }
-
-          // Agents: active for agents paths
-          else if (item.name === "Agents") {
-            isActive = pathMatches(`/${workspaceId}/agents`);
-          }
-
-          // Default: exact match
-          else {
-            isActive = pathname === item.href;
-          }
-
-          return (
-            <LoadingLink
-              key={item.name}
-              href={item.href}
-              loadingMessage={`Loading ${item.name.toLowerCase()}...`}
-              className={`pb-2 ${
-                isCollapsed ? "flex flex-col items-center" : ""
-              }`}
-            >
-              <div
-                className={`group flex items-center p-2 mb-2 ${
-                  isCollapsed ? "justify-center " : ""
-                } text-sm font-medium rounded-lg transition-all duration-200 relative overflow-hidden ${
-                  isActive
-                    ? "text-white shadow-lg border border-workspace-primary workspace-icon-gradient"
-                    : "text-white/70 hover:text-white hover:bg-white/10"
-                }`}
-                style={{
-                  animationDelay: `${index * 50}ms`,
-                }}
-              >
-                {/* Active indicator */}
-                {isActive && (
-                  <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 workspace-primary rounded-full" />
-                )}
-
-                {/* Icon */}
-                <div className={`relative ${isCollapsed ? "" : "mr-4"}`}>
-                  <item.icon
-                    className={`h-4 w-4 transform group-hover:scale-110 transition-transform duration-200 ${
-                      isActive ? "text-workspace-primary-light" : "text-current"
-                    }`}
-                  />
-                </div>
-
-                {/* Label */}
-                {!isCollapsed && (
-                  <span className="font-medium tracking-wide text-xs">
-                    {item.name}
-                  </span>
-                )}
-
-                {/* Hover effect */}
-                <div className="absolute inset-0 bg-gradient-to-r from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 rounded-xl" />
-              </div>
-              {isCollapsed && <span className="text-[10px]">{item.name}</span>}
-            </LoadingLink>
-          );
-        })}
-      </nav>
-
-      {/* Invite Members Button */}
-      <div className="p-2 relative z-10">
-        <button
-          className={`w-full flex items-center ${
-            isCollapsed ? "justify-center flex-col gap-1" : ""
-          }`}
-          onClick={() => setIsInviteMembersModalOpen(true)}
-        >
-          {isCollapsed ? (
-            <div
-              className={`flex items-center p-2 text-white/80 hover:text-white hover:bg-white/10 rounded-lg transition-all duration-200 border border-transparent backdrop-blur-sm group flex items-center`}
-            >
-              <UserPlus className="h-4 w-4 transform group-hover:scale-110 transition-transform duration-200" />
-            </div>
-          ) : (
-            <div
-              className={`w-full flex flex-1 items-center p-2 text-white/80 hover:text-white hover:bg-white/10 rounded-lg transition-all duration-200 border border-transparent backdrop-blur-sm group flex items-center`}
-            >
-              <UserPlus className="mr-3 h-4 w-4 transform group-hover:scale-110 transition-transform duration-200" />
-              <span className="font-medium text-xs">Invite Members</span>
-            </div>
-          )}
           {isCollapsed && (
-            <span className="font-medium text-[10px]">Invite</span>
-          )}
-        </button>
-      </div>
-
-      {/* User Dropdown Session */}
-      <div className="p-2 relative z-10 border-t border-white/10 bg-gradient-to-r from-white/5 to-transparent">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              className={`w-full flex items-center ${
-                isCollapsed ? "justify-center" : "justify-start space-x-3"
-              } text-left hover:bg-white/10 rounded-xl p-2 transition-all duration-200 group`}
-            >
-              <div className="relative">
-                <Avatar className="h-8 w-8 transition-all duration-200">
-                  <AvatarImage
-                    src={profile?.avatar_url ?? undefined}
-                    alt={profile?.email ?? user?.email ?? "User"}
-                  />
-                  <AvatarFallback className="workspace-sidebar-header-gradient text-white font-semibold text-sm">
-                    {getAvatarInitials(
-                      profile?.full_name,
-                      profile?.email ?? user?.email
-                    )}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-400 rounded-full border-2 border-gray-800" />
+            <div className="flex justify-center">
+              <div className="relative group">
+                <Image
+                  src="/images/sprint-icon.png"
+                  alt="sprintiq-logo"
+                  width={80}
+                  height={80}
+                  className="p-2"
+                />
               </div>
-              {!isCollapsed && (
-                <div className="flex-1 min-w-0">
-                  <h3 className="text-xs font-semibold truncate text-white/90 group-hover:text-white transition-colors">
-                    {profile?.full_name ||
-                      profile?.email ||
-                      user?.email ||
-                      "Guest User"}
-                  </h3>
-                  <p className="text-xs text-white/60 font-medium">
-                    {user?.user_metadata?.role || "Admin"}
-                  </p>
-                </div>
-              )}
-              {!isCollapsed && (
-                <ChevronDown className="h-4 w-4 text-white/60 group-hover:text-white/80 transition-colors ml-auto" />
-              )}
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="ml-2 w-64">
-            {isAdmin === null ? (
-              <DropdownMenuItem
-                disabled
-                className="text-xs cursor-wait rounded-lg m-1 transition-colors"
+            </div>
+          )}
+
+          {/* Collapse/Expand Button */}
+          <button
+            onClick={() => setIsCollapsed(!isCollapsed)}
+            className={`absolute top-1/2 -translate-y-1/2 -right-4 w-8 h-8 bg-gradient-to-br from-gray-800 to-gray-900 border border-white/20 rounded-full flex items-center justify-center hover:from-gray-700 hover:to-gray-800 transition-all duration-300 z-10 shadow-lg backdrop-blur-sm ${
+              isHovered
+                ? "opacity-100 scale-100 translate-x-0"
+                : "opacity-0 scale-95 translate-x-2"
+            }`}
+          >
+            {isCollapsed ? (
+              <ChevronRight className="h-4 w-4 text-white/80" />
+            ) : (
+              <ChevronLeft className="h-4 w-4 text-white/80" />
+            )}
+          </button>
+        </div>
+
+        {/* Navigation */}
+        <nav
+          className={`flex-1 px-2 pb-2 space-y-2 relative z-10 ${
+            isCollapsed ? "pt-2 px-3" : "pt-5 px-2"
+          }`}
+        >
+          {navigation.map((item, index) => {
+            let isActive = false;
+
+            // Helper function to check if path matches with both /app and non-/app prefixes
+            const pathMatches = (basePath: string) => {
+              return (
+                pathname === basePath ||
+                pathname === `/app${basePath}` ||
+                pathname.startsWith(`${basePath}/`) ||
+                pathname.startsWith(`/app${basePath}/`)
+              );
+            };
+
+            // Home: active for exact home paths
+            if (item.name === "Home") {
+              isActive =
+                pathname === `/${workspaceId}/space` ||
+                pathname === `/${workspaceId}/task` ||
+                pathname === `/app/${workspaceId}` ||
+                pathname === `/${workspaceId}/home` ||
+                pathname === `/app/${workspaceId}/home`;
+            }
+
+            // Teams: active for teams paths
+            else if (item.name === "Teams") {
+              isActive = pathMatches(`/${workspaceId}/teams`);
+            }
+
+            // Workspaces: active for workspaces settings paths
+            else if (item.name === "Workspaces") {
+              isActive = pathMatches(`/${workspaceId}/settings/workspaces`);
+            }
+
+            // Analytics: active for analytics paths
+            else if (item.name === "Analytics") {
+              isActive = pathMatches(`/${workspaceId}/analytics`);
+            }
+
+            // Settings: active for settings paths (excluding workspaces)
+            else if (item.name === "Settings") {
+              isActive =
+                (pathname.startsWith(`/${workspaceId}/settings`) ||
+                  pathname.startsWith(`/app/${workspaceId}/settings`)) &&
+                !pathname.startsWith(`/${workspaceId}/settings/workspaces`) &&
+                !pathname.startsWith(`/app/${workspaceId}/settings/workspaces`);
+            }
+
+            // Agents: active for agents paths
+            else if (item.name === "Agents") {
+              isActive = pathMatches(`/${workspaceId}/agents`);
+            }
+
+            // Default: exact match
+            else {
+              isActive = pathname === item.href;
+            }
+
+            return (
+              <LoadingLink
+                key={item.name}
+                href={item.href}
+                loadingMessage={`Loading ${item.name.toLowerCase()}...`}
+                className={`pb-2 ${
+                  isCollapsed ? "flex flex-col items-center" : ""
+                }`}
               >
-                <ShieldHalf className="mr-1 h-4 w-4" />
-                Checking admin...
-              </DropdownMenuItem>
-            ) : isAdmin ? (
+                <div
+                  className={`group flex items-center p-2 mb-2 ${
+                    isCollapsed ? "justify-center " : ""
+                  } text-sm font-medium rounded-lg transition-all duration-200 relative overflow-hidden ${
+                    isActive
+                      ? "text-white shadow-lg border border-workspace-primary workspace-icon-gradient"
+                      : "text-white/70 hover:text-white hover:bg-white/10"
+                  }`}
+                  style={{
+                    animationDelay: `${index * 50}ms`,
+                  }}
+                >
+                  {/* Active indicator */}
+                  {isActive && (
+                    <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 workspace-primary rounded-full" />
+                  )}
+
+                  {/* Icon */}
+                  <div className={`relative ${isCollapsed ? "" : "mr-4"}`}>
+                    <item.icon
+                      className={`h-4 w-4 transform group-hover:scale-110 transition-transform duration-200 ${
+                        isActive
+                          ? "text-workspace-primary-light"
+                          : "text-current"
+                      }`}
+                    />
+                  </div>
+
+                  {/* Label */}
+                  {!isCollapsed && (
+                    <span className="font-medium tracking-wide text-xs">
+                      {item.name}
+                    </span>
+                  )}
+
+                  {/* Hover effect */}
+                  <div className="absolute inset-0 bg-gradient-to-r from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 rounded-xl" />
+                </div>
+                {isCollapsed && (
+                  <span className="text-[10px]">{item.name}</span>
+                )}
+              </LoadingLink>
+            );
+          })}
+        </nav>
+
+        {/* Invite Members Button */}
+        <div className="p-2 relative z-10">
+          <button
+            className={`w-full flex items-center ${
+              isCollapsed ? "justify-center flex-col gap-1" : ""
+            }`}
+            onClick={() => setIsInviteMembersModalOpen(true)}
+          >
+            {isCollapsed ? (
+              <div
+                className={`flex items-center p-2 text-white/80 hover:text-white hover:bg-white/10 rounded-lg transition-all duration-200 border border-transparent backdrop-blur-sm group flex items-center`}
+              >
+                <UserPlus className="h-4 w-4 transform group-hover:scale-110 transition-transform duration-200" />
+              </div>
+            ) : (
+              <div
+                className={`w-full flex flex-1 items-center p-2 text-white/80 hover:text-white hover:bg-white/10 rounded-lg transition-all duration-200 border border-transparent backdrop-blur-sm group flex items-center`}
+              >
+                <UserPlus className="mr-3 h-4 w-4 transform group-hover:scale-110 transition-transform duration-200" />
+                <span className="font-medium text-xs">Invite Members</span>
+              </div>
+            )}
+            {isCollapsed && (
+              <span className="font-medium text-[10px]">Invite</span>
+            )}
+          </button>
+        </div>
+
+        {/* User Dropdown Session */}
+        <div className="p-2 relative z-10 border-t border-white/10 bg-gradient-to-r from-white/5 to-transparent">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                className={`w-full flex items-center ${
+                  isCollapsed ? "justify-center" : "justify-start space-x-3"
+                } text-left hover:bg-white/10 rounded-xl p-2 transition-all duration-200 group`}
+              >
+                <div className="relative">
+                  <Avatar className="h-8 w-8 transition-all duration-200">
+                    <AvatarImage
+                      src={profile?.avatar_url ?? undefined}
+                      alt={profile?.email ?? user?.email ?? "User"}
+                    />
+                    <AvatarFallback className="workspace-sidebar-header-gradient text-white font-semibold text-sm">
+                      {getAvatarInitials(
+                        profile?.full_name,
+                        profile?.email ?? user?.email
+                      )}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-400 rounded-full border-2 border-gray-800" />
+                </div>
+                {!isCollapsed && (
+                  <div className="flex-1 min-w-0">
+                    <h3 className="text-xs font-semibold truncate text-white/90 group-hover:text-white transition-colors">
+                      {profile?.full_name ||
+                        profile?.email ||
+                        user?.email ||
+                        "Guest User"}
+                    </h3>
+                    <p className="text-xs text-white/60 font-medium">
+                      {user?.user_metadata?.role || "Admin"}
+                    </p>
+                  </div>
+                )}
+                {!isCollapsed && (
+                  <ChevronDown className="h-4 w-4 text-white/60 group-hover:text-white/80 transition-colors ml-auto" />
+                )}
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="ml-2 w-64">
+              {isAdmin === null ? (
+                <DropdownMenuItem
+                  disabled
+                  className="text-xs cursor-wait rounded-lg m-1 transition-colors"
+                >
+                  <ShieldHalf className="mr-1 h-4 w-4" />
+                  Checking admin...
+                </DropdownMenuItem>
+              ) : isAdmin ? (
+                <DropdownMenuItem
+                  className="text-xs hover:workspace-hover cursor-pointer rounded-lg m-1 transition-colors"
+                  onClick={() => router.push("/admin/dashboard")}
+                >
+                  <ShieldHalf className="mr-1 h-4 w-4" />
+                  Admin Page
+                </DropdownMenuItem>
+              ) : null}
+              <DropdownMenuSeparator className="workspace-hover my-2" />
               <DropdownMenuItem
                 className="text-xs hover:workspace-hover cursor-pointer rounded-lg m-1 transition-colors"
-                onClick={() => router.push("/admin/dashboard")}
+                onClick={() => router.push(`/${workspaceId}/settings/profile`)}
               >
-                <ShieldHalf className="mr-1 h-4 w-4" />
-                Admin Page
+                <User className="mr-1 h-4 w-4" />
+                Profile
               </DropdownMenuItem>
-            ) : null}
-            <DropdownMenuSeparator className="workspace-hover my-2" />
-            <DropdownMenuItem
-              className="text-xs hover:workspace-hover cursor-pointer rounded-lg m-1 transition-colors"
-              onClick={() => router.push(`/${workspaceId}/settings/profile`)}
-            >
-              <User className="mr-1 h-4 w-4" />
-              Profile
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              className="text-xs hover:workspace-hover cursor-pointer rounded-lg m-1 transition-colors"
-              onClick={() =>
-                router.push(`/${workspaceId}/settings/notifications`)
-              }
-            >
-              <BellOff className="mr-1 h-4 w-4" />
-              Notification Settings
-            </DropdownMenuItem>
-            <DropdownMenuSeparator className="workspace-hover my-2" />
-            <DropdownMenuItem
-              className="text-rose-500 text-xs hover:bg-rose-500/20 hover:text-rose-300 cursor-pointer rounded-lg m-1 transition-colors"
-              onClick={handleLogout}
-            >
-              <LogOut className="mr-1 h-4 w-4" />
-              Logout
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+              <DropdownMenuItem
+                className="text-xs hover:workspace-hover cursor-pointer rounded-lg m-1 transition-colors"
+                onClick={() =>
+                  router.push(`/${workspaceId}/settings/notifications`)
+                }
+              >
+                <BellOff className="mr-1 h-4 w-4" />
+                Notification Settings
+              </DropdownMenuItem>
+              <DropdownMenuSeparator className="workspace-hover my-2" />
+              <DropdownMenuItem
+                className="text-rose-500 text-xs hover:bg-rose-500/20 hover:text-rose-300 cursor-pointer rounded-lg m-1 transition-colors"
+                onClick={handleLogout}
+              >
+                <LogOut className="mr-1 h-4 w-4" />
+                Logout
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+
+        {/* Inbox Modal (kept for potential future use, though button is removed) */}
+        <InboxModal
+          open={isInboxOpen}
+          onOpenChange={setIsInboxOpen}
+          workspace={workspace}
+        />
+
+        {/* Invite Members Modal */}
+        <InviteMembersModal
+          open={isInviteMembersModalOpen}
+          onOpenChange={setIsInviteMembersModalOpen}
+          workspace={workspace}
+        />
       </div>
-
-      {/* Inbox Modal (kept for potential future use, though button is removed) */}
-      <InboxModal
-        open={isInboxOpen}
-        onOpenChange={setIsInboxOpen}
-        workspace={workspace}
-      />
-
-      {/* Invite Members Modal */}
-      <InviteMembersModal
-        open={isInviteMembersModalOpen}
-        onOpenChange={setIsInviteMembersModalOpen}
-        workspace={workspace}
-      />
-    </div>
+    </>
   );
 }

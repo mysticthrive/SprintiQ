@@ -284,6 +284,9 @@
   .workspace-ring {
     --tw-ring-color: rgb(var(--workspace-primary-500));
   }
+  .workspace-accent {
+    accent-color: rgb(var(--workspace-primary-500));
+  }
 }
 
 /* Workspace Utility Classes */

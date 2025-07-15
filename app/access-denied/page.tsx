@@ -51,13 +51,13 @@ export default function AccessDeniedPage() {
           </div>
 
           {/* Alert */}
-          <Alert className="mb-8 bg-red-500/10 border-red-500/20 backdrop-blur-sm">
-            <Mail className="h-4 w-4 text-red-400" />
-            <AlertDescription className="text-red-300">
+          <div className="mb-8 bg-red-500/10 border-red-500/20 text-red-300 backdrop-blur-sm flex gap-2 items-start p-2 rounded-md">
+            <Mail className="h-4 w-4 text-rose-400 mt-1" />
+            <span className="text-rose-400 flex-1 text-left">
               This application is currently in restricted access mode. Only
               authorized users can create accounts and access the platform.
-            </AlertDescription>
-          </Alert>
+            </span>
+          </div>
 
           {/* Actions */}
           <div className="space-y-4">

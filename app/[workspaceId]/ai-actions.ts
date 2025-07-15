@@ -8,10 +8,7 @@ import { revalidatePath } from "next/cache";
 import { nanoid } from "nanoid";
 import type { PriorityWeights } from "@/components/workspace/ai/priority-scoring-config";
 import { getOptimalTeamAssignment } from "@/lib/supabase-vector-service";
-import type {
-  TeamMember,
-  EnhancedStoryGenerationParams,
-} from "@/types";
+import type { TeamMember, EnhancedStoryGenerationParams } from "@/types";
 import type { EnhancedSprint } from "@/lib/sprint-creation-service";
 import SprintCreationService from "@/lib/sprint-creation-service";
 import { DEFAULT_WEIGHTS } from "@/types";
@@ -2692,5 +2689,57 @@ export async function createSprints({
     return { success: true, createdSprints: newSprint, createdStatuses };
   } catch (e: any) {
     return { success: false, error: e.message };
+  }
+}
+
+/**
+ * Track a story generation or creation session in the database
+ * @param eventType 'story_generation' or 'story_creation'
+ * @param timestamp Duration in ms (time taken from start to end)
+ */
+export async function trackStoryGenerationSession({
+  userId,
+  storyCount,
+  feature,
+  complexity,
+  teamSize,
+  timestamp, // duration in ms
+  eventType,
+  method,
+}: {
+  userId: string;
+  storyCount: number;
+  feature: string;
+  complexity: "simple" | "moderate" | "complex";
+  teamSize: number;
+  timestamp: number; // duration in ms
+  eventType: "story_generation" | "story_creation" | "sprints_creation";
+  method?: string;
+}): Promise<{ success: boolean; sessionId?: string; error?: string }> {
+  try {
+    const supabase = await createServerSupabaseClient();
+    const sessionId = `ses${nanoid(12)}`;
+    const methodValue = method || "ai_generated";
+    const createdAt = new Date().toISOString();
+
+    const { error } = await supabase.from("time_tracking_sessions").insert({
+      user_id: userId,
+      session_id: sessionId,
+      event_type: eventType,
+      story_count: storyCount,
+      feature,
+      method: methodValue,
+      complexity,
+      team_size: teamSize,
+      created_at: createdAt,
+      timestamp,
+    });
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+    return { success: true, sessionId };
+  } catch (error) {
+    return { success: false, error: (error as Error).message };
   }
 }

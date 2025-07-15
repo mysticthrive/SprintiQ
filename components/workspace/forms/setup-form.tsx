@@ -35,6 +35,13 @@ import {
 import { createClientSupabaseClient } from "@/lib/supabase/client";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import Image from "next/image";
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from "@/components/ui/select";
 
 type WorkspaceFormData = {
   purpose: string;
@@ -52,12 +59,34 @@ const initialFormData: WorkspaceFormData = {
   invites: [],
 };
 
+// Add BaselineData type
+
+type BaselineData = {
+  storyCreationTime: number;
+  backlogGroomingTime: number;
+  storiesPerSession: number;
+  currentMethod: "manual" | "templates" | "other_tools";
+  teamSize: number;
+  experienceLevel: "beginner" | "intermediate" | "expert";
+};
+
+const initialBaselineData: BaselineData = {
+  storyCreationTime: 0,
+  backlogGroomingTime: 0,
+  storiesPerSession: 0,
+  currentMethod: "manual",
+  teamSize: 1,
+  experienceLevel: "beginner",
+};
+
 export default function SetupWorkspaceForm() {
   const [step, setStep] = useState(1);
   const [formData, setFormData] = useState<WorkspaceFormData>(initialFormData);
   const [inviteEmail, setInviteEmail] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [baselineData, setBaselineData] =
+    useState<BaselineData>(initialBaselineData);
   const router = useRouter();
   const supabase = createClientSupabaseClient();
 
@@ -90,7 +119,16 @@ export default function SetupWorkspaceForm() {
     if (step === 2 && !formData.type) return;
     if (step === 3 && !formData.category) return;
     if (step === 4 && !formData.name) return;
-
+    if (
+      step === 5 &&
+      (!baselineData.storyCreationTime ||
+        !baselineData.backlogGroomingTime ||
+        !baselineData.storiesPerSession ||
+        !baselineData.currentMethod ||
+        !baselineData.teamSize ||
+        !baselineData.experienceLevel)
+    )
+      return;
     setStep((prev) => prev + 1);
   };
 
@@ -183,6 +221,19 @@ export default function SetupWorkspaceForm() {
         }
       }
 
+      // Save baseline survey answers
+      await supabase.from("user_baselines").insert({
+        user_id: user.id,
+        baseline_story_time_ms: baselineData.storyCreationTime * 60 * 1000,
+        baseline_grooming_time_ms: baselineData.backlogGroomingTime * 60 * 1000,
+        baseline_planning_time_ms: 0, // Not collected in survey
+        baseline_stories_per_session: baselineData.storiesPerSession,
+        baseline_method: baselineData.currentMethod,
+        team_size: baselineData.teamSize,
+        experience_level: baselineData.experienceLevel,
+        measurement_date: new Date().toISOString(),
+      });
+
       // Redirect to workspace using short ID
       router.push(`/${workspace.workspace_id}/home`);
     } catch (err: any) {
@@ -250,9 +301,14 @@ export default function SetupWorkspaceForm() {
                       label: "Name",
                       description: "Name your workspace",
                     },
-                    { step: 5, label: "Team", description: "Invite your team" },
                     {
-                      step: 6,
+                      step: 5,
+                      label: "Survey",
+                      description: "User Survey",
+                    },
+                    { step: 6, label: "Team", description: "Invite your team" },
+                    {
+                      step: 7,
                       label: "Ready",
                       description: "Launch your workspace",
                     },
@@ -302,11 +358,11 @@ export default function SetupWorkspaceForm() {
                   <div className="h-2 bg-emerald-800/30 rounded-full overflow-hidden">
                     <div
                       className="h-2 bg-white rounded-full transition-all duration-700 ease-out shadow-sm"
-                      style={{ width: `${((step - 1) / 5) * 100}%` }}
+                      style={{ width: `${((step - 1) / 7) * 100}%` }}
                     ></div>
                   </div>
                   <div className="text-emerald-100/80 text-sm mt-2 text-center">
-                    Step {step} of 6
+                    Step {step} of 7
                   </div>
                 </div>
               </div>
@@ -324,18 +380,25 @@ export default function SetupWorkspaceForm() {
                   </Button>
                 )}
 
-                {step < 6 && (
+                {step < 7 && (
                   <Button
                     onClick={nextStep}
                     disabled={
                       (step === 1 && !formData.purpose) ||
                       (step === 2 && !formData.type) ||
                       (step === 3 && !formData.category) ||
-                      (step === 4 && !formData.name)
+                      (step === 4 && !formData.name) ||
+                      (step === 5 &&
+                        (!baselineData.storyCreationTime ||
+                          !baselineData.backlogGroomingTime ||
+                          !baselineData.storiesPerSession ||
+                          !baselineData.currentMethod ||
+                          !baselineData.teamSize ||
+                          !baselineData.experienceLevel))
                     }
                     className="w-full bg-white text-emerald-600 hover:bg-emerald-50 font-semibold rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105 disabled:opacity-50 disabled:transform-none"
                   >
-                    {step === 5
+                    {step === 6
                       ? formData.invites.length > 0
                         ? "Continue"
                         : "Skip for now"
@@ -344,7 +407,7 @@ export default function SetupWorkspaceForm() {
                   </Button>
                 )}
 
-                {step === 6 && (
+                {step === 7 && (
                   <Button
                     onClick={createWorkspace}
                     disabled={isLoading}
@@ -622,8 +685,186 @@ export default function SetupWorkspaceForm() {
                 </div>
               )}
 
-              {/* Step 5: Invite People */}
+              {/* Step 5: Survey */}
               {step === 5 && (
+                <div className="h-full flex flex-col justify-center">
+                  <div className="text-center mb-12">
+                    <h2 className="text-4xl font-bold text-white mb-4">
+                      User Survey
+                    </h2>
+                    <p className="text-slate-300 text-xl max-w-2xl mx-auto">
+                      Help us understand your current process so we can tailor
+                      your experience.
+                    </p>
+                  </div>
+                  <div className="max-w-lg mx-auto space-y-6">
+                    {/* Story Creation Time */}
+                    <div>
+                      <Label className="block text-sm font-medium mb-2 text-white">
+                        How long does it typically take you to create ONE user
+                        story? (minutes)
+                      </Label>
+                      <Input
+                        type="number"
+                        value={baselineData.storyCreationTime || ""}
+                        onChange={(e) =>
+                          setBaselineData({
+                            ...baselineData,
+                            storyCreationTime: parseInt(e.target.value) || 0,
+                          })
+                        }
+                        placeholder="e.g., 15"
+                        min={1}
+                        max={240}
+                        required
+                        className="w-full p-2 border rounded-md bg-slate-800/50 border-slate-600/50 text-white placeholder:text-slate-400"
+                      />
+                      <p className="text-xs text-gray-400 mt-1">
+                        Include time for research, writing, and defining
+                        acceptance criteria
+                      </p>
+                    </div>
+                    {/* Backlog Grooming Time */}
+                    <div>
+                      <Label className="block text-sm font-medium mb-2 text-white">
+                        How long do your backlog grooming sessions typically
+                        last? (minutes)
+                      </Label>
+                      <Input
+                        type="number"
+                        value={baselineData.backlogGroomingTime || ""}
+                        onChange={(e) =>
+                          setBaselineData({
+                            ...baselineData,
+                            backlogGroomingTime: parseInt(e.target.value) || 0,
+                          })
+                        }
+                        placeholder="e.g., 60"
+                        min={15}
+                        max={480}
+                        required
+                        className="w-full p-2 border rounded-md bg-slate-800/50 border-slate-600/50 text-white placeholder:text-slate-400"
+                      />
+                    </div>
+                    {/* Stories Per Session */}
+                    <div>
+                      <Label className="block text-sm font-medium mb-2 text-white">
+                        How many stories do you typically create/refine per
+                        grooming session?
+                      </Label>
+                      <Input
+                        type="number"
+                        value={baselineData.storiesPerSession || ""}
+                        onChange={(e) =>
+                          setBaselineData({
+                            ...baselineData,
+                            storiesPerSession: parseInt(e.target.value) || 0,
+                          })
+                        }
+                        placeholder="e.g., 5"
+                        min={1}
+                        max={50}
+                        required
+                        className="w-full p-2 border rounded-md bg-slate-800/50 border-slate-600/50 text-white placeholder:text-slate-400"
+                      />
+                    </div>
+                    {/* Current Method */}
+                    <div>
+                      <Label className="block text-sm font-medium mb-2 text-white">
+                        How do you currently create user stories?
+                      </Label>
+                      <Select
+                        value={baselineData.currentMethod}
+                        onValueChange={(value) =>
+                          setBaselineData({
+                            ...baselineData,
+                            currentMethod:
+                              value as BaselineData["currentMethod"],
+                          })
+                        }
+                        required
+                      >
+                        <SelectTrigger className="w-full p-2 border rounded-md bg-slate-800/50 border-slate-600/50 text-white">
+                          <SelectValue placeholder="Select method" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="manual">
+                            Manual writing from scratch
+                          </SelectItem>
+                          <SelectItem value="templates">
+                            Using templates/examples
+                          </SelectItem>
+                          <SelectItem value="other_tools">
+                            Other AI/automation tools
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    {/* Team Size */}
+                    <div>
+                      <Label className="block text-sm font-medium mb-2 text-white">
+                        What's your team size?
+                      </Label>
+                      <Select
+                        value={String(baselineData.teamSize)}
+                        onValueChange={(value) =>
+                          setBaselineData({
+                            ...baselineData,
+                            teamSize: parseInt(value),
+                          })
+                        }
+                        required
+                      >
+                        <SelectTrigger className="w-full p-2 border rounded-md bg-slate-800/50 border-slate-600/50 text-white">
+                          <SelectValue placeholder="Select team size" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="1">Just me</SelectItem>
+                          <SelectItem value="2">2-3 people</SelectItem>
+                          <SelectItem value="5">4-6 people</SelectItem>
+                          <SelectItem value="10">7-12 people</SelectItem>
+                          <SelectItem value="20">13+ people</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    {/* Experience Level */}
+                    <div>
+                      <Label className="block text-sm font-medium mb-2 text-white">
+                        Your experience with agile/user stories?
+                      </Label>
+                      <Select
+                        value={baselineData.experienceLevel}
+                        onValueChange={(value) =>
+                          setBaselineData({
+                            ...baselineData,
+                            experienceLevel:
+                              value as BaselineData["experienceLevel"],
+                          })
+                        }
+                        required
+                      >
+                        <SelectTrigger className="w-full p-2 border rounded-md bg-slate-800/50 border-slate-600/50 text-white">
+                          <SelectValue placeholder="Select experience level" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="beginner">
+                            Beginner (&lt; 1 year)
+                          </SelectItem>
+                          <SelectItem value="intermediate">
+                            Intermediate (1-3 years)
+                          </SelectItem>
+                          <SelectItem value="expert">
+                            Expert (3+ years)
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Step 6: Invite People */}
+              {step === 6 && (
                 <div className="h-full flex flex-col justify-center">
                   <div className="text-center mb-12">
                     <h2 className="text-4xl font-bold text-white mb-4">
@@ -707,8 +948,8 @@ export default function SetupWorkspaceForm() {
                 </div>
               )}
 
-              {/* Step 6: Thank You with Canvas Fireworks */}
-              {step === 6 && (
+              {/* Step 7: Thank You with Canvas Fireworks */}
+              {step === 7 && (
                 <div className="h-full flex flex-col justify-center text-center relative z-20">
                   <div className="flex justify-center mb-12 relative">
                     <div className="w-32 h-32 bg-gradient-to-r from-emerald-500 to-green-600 rounded-full flex items-center justify-center shadow-2xl shadow-emerald-500/30 animate-pulse relative">

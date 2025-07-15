@@ -13,6 +13,7 @@ import {
   analyzeStoryDependencies,
   createSprintFolder,
   createSprints,
+  trackStoryGenerationSession,
 } from "@/app/[workspaceId]/ai-actions";
 import {
   Pencil,
@@ -174,6 +175,17 @@ export default function AgentsPage() {
   const { toast } = useEnhancedToast();
   const supabase = createClientSupabaseClient();
 
+  // Add state for sessionId and start time
+  const [storyGenSessionId, setStoryGenSessionId] = useState<string | null>(
+    null
+  );
+  const [storyGenStartTime, setStoryGenStartTime] = useState<number | null>(
+    null
+  );
+  const [storyGenGenStartTime, setStoryGenGenStartTime] = useState<
+    number | null
+  >(null);
+
   // Load available spaces and projects
   useEffect(() => {
     loadSpacesAndProjects();
@@ -230,11 +242,42 @@ export default function AgentsPage() {
   }) => {
     setIsGenerating(true);
     try {
+      // Get current user
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) {
+        toast({
+          title: "Authentication error",
+          description: "You must be logged in to generate stories.",
+          variant: "destructive",
+        });
+        setIsGenerating(false);
+        return;
+      }
+      // Track session start for story_creation
+      const feature = `As a ${story.role}, I want ${story.want}, so that ${story.benefit}`;
+      const startTime = Date.now();
+      setStoryGenStartTime(startTime);
+      // Track session start for story_generation (local variable)
+      const genStartTime = Date.now();
+      const sessionRes = await trackStoryGenerationSession({
+        userId: user.id,
+        storyCount: 0, // Will update after save
+        feature,
+        complexity: story.complexity,
+        teamSize: story.teamMembers.length,
+        timestamp: 0, // Will update with duration after save
+        eventType: "story_creation",
+      });
+      if (sessionRes.success && sessionRes.sessionId) {
+        setStoryGenSessionId(sessionRes.sessionId);
+      }
       // Update the team members state so Sprint Assistant can use it
       setTeamMembers(story.teamMembers);
 
       const params = {
-        featureDescription: `As a ${story.role}, I want ${story.want}, so that ${story.benefit}`,
+        featureDescription: feature,
         numberOfStories: story.numberOfStories,
         complexity: story.complexity,
         workspaceId,
@@ -243,7 +286,22 @@ export default function AgentsPage() {
         useTAWOS: true,
       };
 
+      // Start generation
       const { stories, error } = await generateTAWOSStories(params);
+
+      // Track story_generation duration (always save to DB)
+      if (user) {
+        const genDuration = Date.now() - genStartTime;
+        await trackStoryGenerationSession({
+          userId: user.id,
+          storyCount: stories ? stories.length : 0,
+          feature,
+          complexity: story.complexity,
+          teamSize: story.teamMembers.length,
+          timestamp: genDuration,
+          eventType: "story_generation",
+        });
+      }
 
       if (error) {
         toast({
@@ -553,6 +611,19 @@ export default function AgentsPage() {
             });
           }
         }
+        setLoadingState({
+          isOpen: false,
+          currentStep: "Saved succesful",
+          progress: 100,
+        });
+        toast({
+          title: "Stories saved!",
+          description: "All generated stories have been saved.",
+          sendBrowserNotification: true,
+          browserNotificationTitle: "Stories saved!",
+          browserNotificationBody: "All generated stories have been saved.",
+        });
+        setShowSaveModal(false);
       } else {
         // --- SPRINT MODE (sprints exist) ---
         if (createdSprints && createdSprints.length > 0) {
@@ -838,9 +909,14 @@ export default function AgentsPage() {
           currentStep: "Stories saved!",
           progress: 100,
         });
+
         toast({
           title: "Stories and sprints saved!",
           description: "All generated stories and sprints have been saved.",
+          sendBrowserNotification: true,
+          browserNotificationTitle: "Stories and sprints saved!",
+          browserNotificationBody:
+            "All generated stories and sprints have been saved.",
         });
         // Optionally, refresh or redirect
       }
@@ -852,6 +928,24 @@ export default function AgentsPage() {
         variant: "destructive",
       });
       setLoadingState({ isOpen: false, currentStep: "", progress: 0 });
+    } finally {
+      // After all stories are saved successfully, update the session row
+      if (storyGenSessionId && storyGenStartTime) {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        if (user) {
+          const duration = Date.now() - storyGenStartTime;
+          await supabase
+            .from("time_tracking_sessions")
+            .update({
+              story_count: generatedStories.length,
+              timestamp: duration, // duration in ms
+            })
+            .eq("session_id", storyGenSessionId)
+            .eq("user_id", user.id);
+        }
+      }
     }
   };
 

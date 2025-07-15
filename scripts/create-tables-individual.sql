@@ -100,3 +100,21 @@ INSERT INTO levels (name, description) VALUES
 ('VP', 'Vice President level with company-wide strategic impact'),
 ('C-Level', 'Chief-level executive position')
 ON CONFLICT (name) DO NOTHING; 
+
+-- 12. Create time_tracking_sessions table for story generation timing
+CREATE TABLE IF NOT EXISTS time_tracking_sessions (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    session_id TEXT NOT NULL UNIQUE,
+    event_type TEXT NOT NULL,
+    story_count INTEGER NOT NULL,
+    feature TEXT NOT NULL,
+    method TEXT NOT NULL,
+    complexity TEXT NOT NULL,
+    team_size INTEGER NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    timestamp BIGINT -- duration in ms (time taken from start to end)
+);
+
+CREATE INDEX IF NOT EXISTS idx_time_tracking_sessions_user_id ON time_tracking_sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_time_tracking_sessions_created_at ON time_tracking_sessions(created_at DESC); 
