@@ -23,7 +23,7 @@ export function useEnhancedToast() {
         browserNotificationTitle ||
         (typeof toastProps.title === "string"
           ? toastProps.title
-          : "SprintIQ Notification");
+          : "SprintiQ Notification");
       const body =
         browserNotificationBody ||
         (typeof toastProps.description === "string"

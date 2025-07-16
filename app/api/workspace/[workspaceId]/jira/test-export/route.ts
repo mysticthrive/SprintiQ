@@ -120,7 +120,7 @@ export async function POST(
         ) || priorities[0];
 
       testIssue = await jiraApi.createIssue(projectKey, {
-        summary: "Test Issue from SprintIQ Export",
+        summary: "Test Issue from SprintiQ Export",
         description: "This is a test issue created during the export process.",
         issueType: issueType.name,
         priority: priority.name,

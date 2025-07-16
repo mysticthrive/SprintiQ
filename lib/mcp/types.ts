@@ -1,0 +1,253 @@
+// MCP (Model Context Protocol) Types and Interfaces for SprintiQ
+
+export interface MCPMessage {
+  jsonrpc: "2.0";
+  id?: string | number;
+  method?: string;
+  params?: any;
+  result?: any;
+  error?: MCPError;
+}
+
+export interface MCPError {
+  code: number;
+  message: string;
+  data?: any;
+}
+
+export interface MCPCapability {
+  name: string;
+  description: string;
+  inputSchema: any;
+  outputSchema: any;
+}
+
+export interface MCPServerInfo {
+  name: string;
+  version: string;
+  capabilities: MCPCapability[];
+}
+
+export interface MCPTool {
+  name: string;
+  description: string;
+  inputSchema: {
+    type: "object";
+    properties: Record<string, any>;
+    required?: string[];
+  };
+}
+
+export interface MCPResource {
+  uri: string;
+  name: string;
+  description?: string;
+  mimeType?: string;
+}
+
+export interface MCPPrompt {
+  name: string;
+  description: string;
+  arguments?: MCPPromptArgument[];
+}
+
+export interface MCPPromptArgument {
+  name: string;
+  description: string;
+  required?: boolean;
+}
+
+// User Validation Types for MCP
+export interface MCPUserValidationResult {
+  isValid: boolean;
+  user?: MCPValidatedUser;
+  error?: string;
+}
+
+export interface MCPValidatedUser {
+  id: string;
+  email: string;
+  name: string;
+  allowed: boolean;
+  company?: string;
+  workspaces: MCPWorkspaceInfo[];
+}
+
+export interface MCPWorkspaceInfo {
+  id: string;
+  workspace_id: string;
+  name: string;
+  role: string;
+  spaces: MCPSpaceInfo[];
+  teams: MCPTeamInfo[];
+}
+
+export interface MCPSpaceInfo {
+  id: string;
+  space_id: string;
+  name: string;
+  description?: string;
+  projects: MCPProjectInfo[];
+  sprint_folders: MCPSprintFolderInfo[];
+}
+
+export interface MCPProjectInfo {
+  id: string;
+  project_id: string;
+  name: string;
+  type?: string;
+}
+
+export interface MCPSprintFolderInfo {
+  id: string;
+  sprint_folder_id: string;
+  name: string;
+  sprints: MCPSprintInfo[];
+}
+
+export interface MCPSprintInfo {
+  id: string;
+  sprint_id: string;
+  name: string;
+  status: string;
+}
+
+export interface MCPTeamInfo {
+  id: string;
+  name: string;
+  description?: string;
+  role?: string;
+  level?: string;
+}
+
+// SprintiQ specific MCP tool definitions
+export interface SprintiQMCPTools {
+  // User Management
+  validateUser: MCPTool;
+  getUserContext: MCPTool;
+
+  // Task Management
+  createTask: MCPTool;
+  updateTask: MCPTool;
+  deleteTask: MCPTool;
+  getTask: MCPTool;
+  listTasks: MCPTool;
+
+  // Project Management
+  createProject: MCPTool;
+  getProject: MCPTool;
+  listProjects: MCPTool;
+
+  // Sprint Management
+  createSprint: MCPTool;
+  getSprint: MCPTool;
+  listSprints: MCPTool;
+  generateSprintGoal: MCPTool;
+
+  // AI-Powered Features
+  generateUserStories: MCPTool;
+  analyzeTaskPriority: MCPTool;
+  findSimilarTasks: MCPTool;
+  trainTAWOS: MCPTool;
+
+  // Team Management
+  getTeamMembers: MCPTool;
+  assignTask: MCPTool;
+  getTeamCapacity: MCPTool;
+
+  // Analytics
+  getProjectAnalytics: MCPTool;
+  getSprintAnalytics: MCPTool;
+  getTeamPerformance: MCPTool;
+}
+
+// MCP Server Configuration
+export interface MCPServerConfig {
+  name: string;
+  version: string;
+  port: number;
+  host: string;
+  cors?: {
+    origin: string[];
+    methods: string[];
+    headers: string[];
+  };
+  auth?: {
+    type: "bearer" | "apikey" | "oauth";
+    required: boolean;
+  };
+}
+
+// MCP Client Configuration
+export interface MCPClientConfig {
+  serverUrl: string;
+  auth?: {
+    type: "bearer" | "apikey" | "oauth";
+    token: string;
+  };
+  timeout?: number;
+  retries?: number;
+}
+
+// MCP Transport Layer
+export interface MCPTransport {
+  send(message: MCPMessage): Promise<MCPMessage>;
+  receive(callback: (message: MCPMessage) => void): void;
+  close(): void;
+}
+
+// MCP Server Implementation Interface
+export interface MCPServer {
+  info(): MCPServerInfo;
+  listTools(): MCPTool[];
+  callTool(name: string, params: any): Promise<any>;
+  listResources(): MCPResource[];
+  readResource(uri: string): Promise<any>;
+  listPrompts(): MCPPrompt[];
+  getPrompt(name: string, args?: any): Promise<any>;
+}
+
+// MCP Client Implementation Interface
+export interface MCPClient {
+  connect(config: MCPClientConfig): Promise<void>;
+  disconnect(): Promise<void>;
+  callTool(name: string, params: any): Promise<any>;
+  listTools(): Promise<MCPTool[]>;
+  getServerInfo(): Promise<MCPServerInfo>;
+}
+
+// SprintiQ Context Types
+export interface SprintiQContext {
+  workspaceId: string;
+  userId: string;
+  email: string;
+  teamId?: string;
+  projectId?: string;
+  sprintId?: string;
+  permissions: string[];
+  workspaceData?: MCPWorkspaceInfo;
+}
+
+// MCP Tool Result Types
+export interface MCPToolResult<T = any> {
+  success: boolean;
+  data?: T;
+  error?: string;
+  metadata?: Record<string, any>;
+}
+
+// MCP Event Types
+export interface MCPEvent {
+  type: string;
+  payload: any;
+  timestamp: Date;
+  source: string;
+}
+
+// MCP Subscription Types
+export interface MCPSubscription {
+  id: string;
+  eventType: string;
+  callback: (event: MCPEvent) => void;
+  filter?: Record<string, any>;
+}

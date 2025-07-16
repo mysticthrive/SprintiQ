@@ -1,4 +1,4 @@
-// SprintIQ.ai Enhanced Sprint Creation Service
+// SprintiQ.ai Enhanced Sprint Creation Service
 // Comprehensive algorithm for creating detailed 2-week sprints with AI-powered optimization
 
 import type { UserStory, TeamMember, Sprint } from "@/types";
@@ -17,7 +17,7 @@ export interface SprintCreationConfig {
     high: number;
   };
 
-  // Priority Weights (from SprintIQ.ai specs)
+  // Priority Weights (from SprintiQ.ai specs)
   priorityWeights: {
     businessValue: number;
     userImpact: number;
@@ -124,7 +124,7 @@ export class SprintCreationService {
         high: 5.0,
       },
 
-      // Priority Weights (from SprintIQ.ai specs)
+      // Priority Weights (from SprintiQ.ai specs)
       priorityWeights: {
         businessValue: 30,
         userImpact: 25,
@@ -281,7 +281,7 @@ export class SprintCreationService {
   }
 
   /**
-   * Calculate priority scores and story metrics using SprintIQ.ai algorithm
+   * Calculate priority scores and story metrics using SprintiQ.ai algorithm
    */
   private async calculateStoriesMetrics(
     stories: UserStory[]
@@ -857,7 +857,7 @@ export class SprintCreationService {
       generated: {
         timestamp: new Date().toISOString(),
         version: "1.0",
-        agent: "SprintIQ.ai Sprint Creation Agent",
+        agent: "SprintiQ.ai Sprint Creation Agent",
       },
     };
 
@@ -1866,7 +1866,7 @@ Return ONLY the sprint goal text, no additional formatting or explanations.
   }
 }
 
-// Export for use in SprintIQ.ai platform
+// Export for use in SprintiQ.ai platform
 export default SprintCreationService;
 
 /**
@@ -1953,7 +1953,7 @@ export async function calculateManualSprintAnalysis(
     generated: {
       timestamp: new Date().toISOString(),
       version: "1.0",
-      agent: "SprintIQ.ai Manual Sprint Analysis",
+      agent: "SprintiQ.ai Manual Sprint Analysis",
     },
   };
 

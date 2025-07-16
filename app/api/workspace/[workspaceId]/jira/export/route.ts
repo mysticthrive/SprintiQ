@@ -147,7 +147,7 @@ export async function POST(
         const projectData = {
           key: projectKey,
           name: projectName,
-          description: `Project exported from SprintIQ workspace: ${workspace.name}`,
+          description: `Project exported from SprintiQ workspace: ${workspace.name}`,
           projectTypeKey: "software", // Default to software project
           leadAccountId: currentUser.accountId, // Use the account ID from Jira
         };

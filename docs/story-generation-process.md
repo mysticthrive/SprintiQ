@@ -2,7 +2,7 @@
 
 ## Overview
 
-The SprintIQ story generation system combines AI-powered story creation with TAWOS (The Agile Way of Software) trained data to produce high-quality, actionable user stories. This document explains the complete algorithm, process flow, and how TAWOS data enhances story quality.
+The SprintiQ story generation system combines AI-powered story creation with TAWOS (The Agile Way of Software) trained data to produce high-quality, actionable user stories. This document explains the complete algorithm, process flow, and how TAWOS data enhances story quality.
 
 ## Process Flow Diagram
 

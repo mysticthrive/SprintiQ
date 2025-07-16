@@ -51,7 +51,7 @@ const faqData = [
       {
         question: "Do I need any technical knowledge to use SprintiQ.ai?",
         answer:
-          "No technical expertise required! SprintIQ.ai is designed for product managers, scrum masters, and development teams of all skill levels. Our intuitive interface and AI-powered features make it easy for anyone to create professional user stories and manage sprints effectively.",
+          "No technical expertise required! SprintiQ.ai is designed for product managers, scrum masters, and development teams of all skill levels. Our intuitive interface and AI-powered features make it easy for anyone to create professional user stories and manage sprints effectively.",
       },
     ],
   },
@@ -96,7 +96,7 @@ const faqData = [
       {
         question: "Which Platforms does SprintiQ.ai integrate with?",
         answer:
-          "SprintIQ.ai integrates with all major project management platforms:<br/>" +
+          "SprintiQ.ai integrates with all major project management platforms:<br/>" +
           "<ul class='list-disc list-inside'><li> Jira (Atlassian) </li>" +
           "<li> Azure DevOps (Microsoft) </li>" +
           "<li> Linear </li>" +
@@ -121,7 +121,7 @@ const faqData = [
       {
         question: "Can I sync data both ways (import and export)?",
         answer:
-          "Currently, SprintIQ.ai focuses on exporting your generated stories to connected platforms. We're working on bi-directional sync capabilities that will allow you to import existing stories for AI enhancement and analysis. This feature is planned for a future release.",
+          "Currently, SprintiQ.ai focuses on exporting your generated stories to connected platforms. We're working on bi-directional sync capabilities that will allow you to import existing stories for AI enhancement and analysis. This feature is planned for a future release.",
       },
     ],
   },

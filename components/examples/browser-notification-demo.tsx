@@ -39,7 +39,7 @@ export function BrowserNotificationDemo() {
   const handleSendTestNotification = () => {
     sendNotification(
       "Test Notification",
-      "This is a test browser notification from SprintIQ!"
+      "This is a test browser notification from SprintiQ!"
     );
   };
 
@@ -91,7 +91,7 @@ export function BrowserNotificationDemo() {
           </CardTitle>
           <CardDescription>
             Test browser notifications functionality. These notifications will
-            appear even when you're not on the SprintIQ tab.
+            appear even when you're not on the SprintiQ tab.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">

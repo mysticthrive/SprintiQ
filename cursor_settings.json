@@ -1,0 +1,15 @@
+{
+  "mcp": {
+    "enabled": true,
+    "servers": {
+      "sprintiq": {
+        "command": "node",
+        "args": ["/home/gregory/Works/sprint-iq/mcp-client.js"],
+        "env": {
+          "NODE_ENV": "development"
+        },
+        "description": "SprintiQ MCP Server - Task management and AI features"
+      }
+    }
+  }
+}

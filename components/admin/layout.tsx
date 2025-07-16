@@ -13,6 +13,7 @@ import {
   Home,
   Building2,
   Mail,
+  ChartBar,
 } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
@@ -251,6 +252,18 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
             >
               <Mail className="h-4 w-4 mr-4" />
               <span>Emails</span>
+            </Link>
+            <Link
+              href="/admin/analytics"
+              className={
+                "group flex items-center p-2 mb-2 text-sm font-medium rounded-lg transition-all duration-200 relative overflow-hidden " +
+                (pathname === "/admin/analytics"
+                  ? "hover:workspace-hover workspace-sidebar-text bg-gray-500/10 font-bold"
+                  : "hover:workspace-hover workspace-sidebar-text")
+              }
+            >
+              <ChartBar className="h-4 w-4 mr-4" />
+              <span>Analytics</span>
             </Link>
           </nav>
         </aside>

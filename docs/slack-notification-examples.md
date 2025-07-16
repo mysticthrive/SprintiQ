@@ -355,7 +355,7 @@ The notifications use consistent emojis for different types of information:
 
 ### 3. Enhanced User Experience
 
-- Clickable links to SprintIQ
+- Clickable links to SprintiQ
 - Rich formatting with emojis and markdown
 - Responsive design that works across devices
 

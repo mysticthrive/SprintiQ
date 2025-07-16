@@ -105,7 +105,7 @@ export function BrowserNotificationDebug() {
     try {
       sendBrowserNotification(
         "Test Notification",
-        "This is a test browser notification from SprintIQ!"
+        "This is a test browser notification from SprintiQ!"
       );
       setTestResult("Test notification sent successfully!");
     } catch (error) {

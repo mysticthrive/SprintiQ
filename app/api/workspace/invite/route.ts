@@ -105,7 +105,7 @@ export async function POST(request: Request) {
       <div style="text-align: center; margin-bottom: 32px">
         <img
           src="https://vttwakzntflxuylenszu.supabase.co/storage/v1/object/public/images/SprintiQ/logo1.png"
-          alt="SprintIQ Logo"
+          alt="SprintiQ Logo"
           style="height: 60px; width: auto"
         />
       </div>
@@ -123,7 +123,7 @@ export async function POST(request: Request) {
 
       <p style="margin-bottom: 20px; font-size: 16px">
         ${inviterProfile.full_name} (${inviterProfile.email}) has invited you to join their
-        workspace on SprintIQ.
+        workspace on SprintiQ.
       </p>
 
       <p style="margin-bottom: 24px; font-size: 16px">

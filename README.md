@@ -1,6 +1,6 @@
-# SprintIQ.ai - AI-Powered Project Management & Story Generation Tool
+# SprintiQ.ai - AI-Powered Project Management & Story Generation Tool
 
-Welcome to the SprintIQ.ai project! This is a comprehensive, AI-driven platform designed to streamline agile workflow management, story creation, prioritization, dependency tracking, and platform integrations for product teams and project managers.
+Welcome to the SprintiQ.ai project! This is a comprehensive, AI-driven platform designed to streamline agile workflow management, story creation, prioritization, dependency tracking, and platform integrations for product teams and project managers.
 
 ---
 

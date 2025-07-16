@@ -1,7 +1,7 @@
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "AI Agents - SprintIQ",
+  title: "AI Agents - SprintiQ",
   description:
     "AI-powered tools to help you manage your projects more efficiently.",
 };

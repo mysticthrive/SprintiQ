@@ -1,12 +1,12 @@
 # Slack Integration
 
-This document describes how to set up and use the Slack integration feature in SprintIQ.
+This document describes how to set up and use the Slack integration feature in SprintiQ.
 
 ## Overview
 
 The Slack integration allows you to:
 
-- Connect your SprintIQ workspace to a Slack workspace
+- Connect your SprintiQ workspace to a Slack workspace
 - Send notifications about task updates, sprint events, and project activities to Slack channels
 - Map specific entities (spaces, projects, sprints) to specific Slack channels
 - Receive real-time updates in your Slack workspace
@@ -18,7 +18,7 @@ The Slack integration allows you to:
 1. Go to [https://api.slack.com/apps](https://api.slack.com/apps)
 2. Click "Create New App"
 3. Choose "From scratch"
-4. Enter an app name (e.g., "SprintIQ Integration")
+4. Enter an app name (e.g., "SprintiQ Integration")
 5. Select your workspace
 
 ### 2. Configure OAuth Settings

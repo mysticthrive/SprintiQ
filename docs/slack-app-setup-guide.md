@@ -7,7 +7,7 @@ This guide will help you set up your Slack app correctly to avoid the `invalid_t
 ### Step 1: Go to Your Slack App Settings
 
 1. Visit [https://api.slack.com/apps](https://api.slack.com/apps)
-2. Select your SprintIQ integration app
+2. Select your SprintiQ integration app
 
 ### Step 2: Enable App Distribution
 

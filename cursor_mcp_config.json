@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "sprintiq": {
+      "command": "node",
+      "args": ["/home/gregory/Works/sprint-iq/mcp-client.js"],
+      "env": {
+        "NODE_ENV": "development"
+      }
+    }
+  }
+}

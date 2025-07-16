@@ -1,12 +1,12 @@
 # Browser Notifications
 
-This document explains how browser notifications work in SprintIQ and how to use them in your components.
+This document explains how browser notifications work in SprintiQ and how to use them in your components.
 
 ## Overview
 
 Browser notifications are now handled by the browser's permission system rather than being stored in the database. This means:
 
-- Notifications are shown even when the user is not on the SprintIQ tab
+- Notifications are shown even when the user is not on the SprintiQ tab
 - The permission status is managed by the browser
 - Users can enable/disable notifications through their browser settings
 
