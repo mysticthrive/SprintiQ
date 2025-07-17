@@ -26,6 +26,7 @@ export interface MCPConnectionStatus {
   lastActivity?: Date;
   requiresAuthorization?: boolean;
   authorizationUrl?: string;
+  authToken?: string;
   error?: string;
 }
 
@@ -72,15 +73,7 @@ export class EnhancedMCPService {
   private static instance: EnhancedMCPService;
   private clientManager: MCPClientManager;
   private activeConnections: Map<string, MCPConnectionStatus> = new Map();
-  private userSessions: Map<
-    string,
-    {
-      user: MCPValidatedUser;
-      workspace?: MCPWorkspaceInfo;
-      teamMembers?: MCPTeamInfo[];
-      connectionId: string;
-    }
-  > = new Map();
+  // Remove the in-memory userSessions Map - we'll use database storage instead
 
   private readonly APP_BASE_URL =
     process.env.NEXT_PUBLIC_APP_URL || "https://app.sprintiq.ai";
@@ -88,6 +81,218 @@ export class EnhancedMCPService {
 
   private constructor() {
     this.clientManager = new MCPClientManager();
+
+    // Clean up expired auth attempts every 5 minutes
+    setInterval(() => this.cleanupExpiredAuth(), 5 * 60 * 1000);
+  }
+
+  /**
+   * Store pending authentication in database instead of memory
+   */
+  private async storePendingAuth(
+    token: string,
+    email: string = ""
+  ): Promise<void> {
+    try {
+      const supabase = await createServerSupabaseClient();
+
+      // Store in database with 10 minute expiry
+      const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+
+      await supabase.from("mcp_auth_tokens").upsert({
+        token,
+        email,
+        status: "pending",
+        created_at: new Date().toISOString(),
+        expires_at: expiresAt.toISOString(),
+      });
+
+      console.log(`[MCP] Stored pending auth token in database: ${token}`);
+    } catch (error) {
+      console.error("[MCP] Failed to store pending auth token:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get pending authentication from database
+   */
+  private async getPendingAuth(token: string): Promise<{
+    email: string;
+    token: string;
+    createdAt: Date;
+    status: "pending" | "completed" | "failed";
+  } | null> {
+    try {
+      const supabase = await createServerSupabaseClient();
+
+      const { data, error } = await supabase
+        .from("mcp_auth_tokens")
+        .select("*")
+        .eq("token", token)
+        .gt("expires_at", new Date().toISOString())
+        .maybeSingle();
+
+      if (error || !data) {
+        console.log(`[MCP] Token ${token} not found in database or expired`);
+        return null;
+      }
+
+      return {
+        email: data.email || "",
+        token: data.token,
+        createdAt: new Date(data.created_at),
+        status: data.status as "pending" | "completed" | "failed",
+      };
+    } catch (error) {
+      console.error("[MCP] Failed to get pending auth token:", error);
+      return null;
+    }
+  }
+
+  /**
+   * Update pending authentication in database
+   */
+  async updatePendingAuth(
+    token: string,
+    updates: {
+      email?: string;
+      status?: "pending" | "completed" | "failed";
+    }
+  ): Promise<void> {
+    try {
+      const supabase = await createServerSupabaseClient();
+
+      await supabase.from("mcp_auth_tokens").update(updates).eq("token", token);
+
+      console.log(`[MCP] Updated auth token ${token} in database:`, updates);
+    } catch (error) {
+      console.error("[MCP] Failed to update pending auth token:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Clean up expired authentication tokens and sessions from database
+   */
+  private async cleanupExpiredAuth(): Promise<void> {
+    try {
+      const supabase = await createServerSupabaseClient();
+
+      const { error } = await supabase
+        .from("mcp_auth_tokens")
+        .delete()
+        .lt("expires_at", new Date().toISOString());
+
+      if (error) {
+        console.error("[MCP] Failed to cleanup expired auth tokens:", error);
+      } else {
+        console.log("[MCP] Cleaned up expired auth tokens and sessions");
+      }
+    } catch (error) {
+      console.error("[MCP] Error during auth token cleanup:", error);
+    }
+  }
+
+  /**
+   * Generate authentication token for Cursor flow
+   */
+  private generateAuthToken(): string {
+    return `mcp_auth_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  /**
+   * Store user session in database
+   */
+  private async storeUserSession(
+    userEmail: string,
+    sessionData: {
+      user: MCPValidatedUser;
+      workspace?: MCPWorkspaceInfo;
+      teamMembers?: MCPTeamInfo[];
+      connectionId: string;
+    }
+  ): Promise<void> {
+    try {
+      const supabase = await createServerSupabaseClient();
+
+      // Store session data with 24 hour expiry
+      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+      await supabase.from("mcp_auth_tokens").upsert({
+        token: `session_${userEmail}`,
+        email: userEmail,
+        status: "active_session",
+        session_data: JSON.stringify(sessionData),
+        created_at: new Date().toISOString(),
+        expires_at: expiresAt.toISOString(),
+      });
+
+      console.log(`[MCP] Stored user session for: ${userEmail}`);
+    } catch (error) {
+      console.error("[MCP] Failed to store user session:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get user session from database
+   */
+  private async getUserSession(userEmail: string): Promise<{
+    user: MCPValidatedUser;
+    workspace?: MCPWorkspaceInfo;
+    teamMembers?: MCPTeamInfo[];
+    connectionId: string;
+  } | null> {
+    try {
+      const supabase = await createServerSupabaseClient();
+
+      const { data, error } = await supabase
+        .from("mcp_auth_tokens")
+        .select("session_data")
+        .eq("token", `session_${userEmail}`)
+        .eq("status", "active_session")
+        .gt("expires_at", new Date().toISOString())
+        .maybeSingle();
+
+      if (error || !data || !data.session_data) {
+        console.log(`[MCP] No active session found for: ${userEmail}`);
+        return null;
+      }
+
+      return JSON.parse(data.session_data);
+    } catch (error) {
+      console.error("[MCP] Failed to get user session:", error);
+      return null;
+    }
+  }
+
+  /**
+   * Update user session in database
+   */
+  private async updateUserSession(
+    userEmail: string,
+    updates: Partial<{
+      workspace: MCPWorkspaceInfo;
+      teamMembers: MCPTeamInfo[];
+    }>
+  ): Promise<void> {
+    try {
+      const currentSession = await this.getUserSession(userEmail);
+      if (!currentSession) {
+        throw new Error("No active session found to update");
+      }
+
+      const updatedSession = {
+        ...currentSession,
+        ...updates,
+      };
+
+      await this.storeUserSession(userEmail, updatedSession);
+    } catch (error) {
+      console.error("[MCP] Failed to update user session:", error);
+      throw error;
+    }
   }
 
   static getInstance(): EnhancedMCPService {
@@ -98,52 +303,167 @@ export class EnhancedMCPService {
   }
 
   /**
-   * Step 1: Check active connection - SPRINTIQ_CHECK_ACTIVE_CONNECTION
-   * Now includes proper authorization check
+   * Check authentication status by token (for Cursor polling)
    */
-  async checkActiveConnection(userEmail: string): Promise<MCPConnectionStatus> {
+  async checkAuthenticationStatus(token: string): Promise<{
+    status: "pending" | "completed" | "failed" | "expired";
+    email?: string;
+    error?: string;
+  }> {
+    console.log(`[MCP] Checking auth status for token: ${token}`);
+
+    const authData = await this.getPendingAuth(token);
+
+    if (!authData) {
+      console.log(`[MCP] Token ${token} not found in database or expired`);
+      return {
+        status: "expired",
+        error: "Authentication token not found or expired",
+      };
+    }
+
+    const age = new Date().getTime() - authData.createdAt.getTime();
+    console.log(`[MCP] Token ${token} age: ${age}ms`);
+
+    if (age > 10 * 60 * 1000) {
+      // 10 minutes expiry - this should be handled by database query but double-check
+      console.log(`[MCP] Token ${token} expired (age check)`);
+      return { status: "expired", error: "Authentication token expired" };
+    }
+
+    console.log(
+      `[MCP] Token ${token} status: ${authData.status}, email: ${authData.email}`
+    );
+    return {
+      status: authData.status,
+      email: authData.email,
+    };
+  }
+
+  /**
+   * Complete authentication (called by callback)
+   */
+  async completeAuthentication(
+    token: string,
+    userEmail: string
+  ): Promise<{
+    success: boolean;
+    email?: string;
+    error?: string;
+  }> {
+    console.log(
+      `[MCP] Completing authentication for token: ${token}, email: ${userEmail}`
+    );
+
+    const authData = await this.getPendingAuth(token);
+
+    if (!authData) {
+      console.log(`[MCP] Token ${token} not found during completion`);
+      return { success: false, error: "Authentication token not found" };
+    }
+
+    // Update with the actual user email from the session
+    await this.updatePendingAuth(token, {
+      email: userEmail,
+      status: "completed",
+    });
+
+    console.log(
+      `[MCP] Authentication completed successfully for token: ${token}`
+    );
+    return {
+      success: true,
+      email: userEmail,
+    };
+  }
+
+  /**
+   * Get completed authentication (for checking if user is authenticated)
+   */
+  async getCompletedAuthentication(): Promise<{
+    success: boolean;
+    email?: string;
+    token?: string;
+    error?: string;
+  }> {
     try {
-      const existingConnection = this.activeConnections.get(userEmail);
+      const supabase = await createServerSupabaseClient();
 
-      if (existingConnection && existingConnection.isConnected) {
-        // Update last activity
-        existingConnection.lastActivity = new Date();
-        this.activeConnections.set(userEmail, existingConnection);
+      // Find the most recent completed authentication
+      const { data, error } = await supabase
+        .from("mcp_auth_tokens")
+        .select("*")
+        .eq("status", "completed")
+        .gt("expires_at", new Date().toISOString())
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
 
-        return existingConnection;
-      }
-
-      // Check if user is authenticated in the main app
-      const authStatus = await this.checkUserAuthentication(userEmail);
-
-      if (!authStatus.isAuthenticated) {
+      if (error) {
+        console.error("[MCP] Error getting completed authentication:", error);
         return {
-          isConnected: false,
-          hasActiveConnection: false,
-          requiresAuthorization: true,
-          authorizationUrl: authStatus.authorizationUrl,
-          error:
-            authStatus.error ||
-            "Authentication required. Please sign in to SprintIQ.",
+          success: false,
+          error: "Failed to get completed authentication",
         };
       }
 
-      // No active connection, but user is authenticated - ready to establish connection
+      if (data && data.email) {
+        return {
+          success: true,
+          email: data.email,
+          token: data.token,
+        };
+      }
+
       return {
-        isConnected: false,
-        hasActiveConnection: false,
-        requiresAuthorization: false,
+        success: false,
+        error: "No completed authentication found",
       };
     } catch (error) {
-      console.error("Error checking active connection:", error);
+      console.error("[MCP] Error in getCompletedAuthentication:", error);
+      return {
+        success: false,
+        error: "Failed to get completed authentication",
+      };
+    }
+  }
+
+  /**
+   * Step 1: Check active connection - SPRINTIQ_CHECK_ACTIVE_CONNECTION
+   * Simplified to handle only redirect flow
+   */
+  async checkActiveConnection(): Promise<MCPConnectionStatus> {
+    try {
+      // Generate auth token for the redirect flow
+      const authToken = this.generateAuthToken();
+      console.log(`[MCP] Generated new auth token: ${authToken}`);
+
+      // Store pending auth without email (will be filled after redirect)
+      await this.storePendingAuth(authToken, "");
+
+      console.log(`[MCP] Stored pending auth for token: ${authToken}`);
+
+      // Return redirect URL for SprintIQ signin
       return {
         isConnected: false,
         hasActiveConnection: false,
         requiresAuthorization: true,
         authorizationUrl: `${
           this.APP_BASE_URL
-        }/signin?redirect=${encodeURIComponent(this.MCP_CALLBACK_URL)}`,
-        error: "Failed to check connection status. Please sign in to SprintIQ.",
+        }/signin?mcp_token=${authToken}&redirect=${encodeURIComponent(
+          this.MCP_CALLBACK_URL
+        )}`,
+        authToken: authToken,
+        error:
+          "Authentication required. Please sign in to SprintIQ using the provided URL.",
+      };
+    } catch (error) {
+      console.error("Error in checkActiveConnection:", error);
+      return {
+        isConnected: false,
+        hasActiveConnection: false,
+        requiresAuthorization: true,
+        error: "Failed to generate authentication URL",
       };
     }
   }
@@ -154,6 +474,7 @@ export class EnhancedMCPService {
   private async checkUserAuthentication(userEmail: string): Promise<{
     isAuthenticated: boolean;
     authorizationUrl?: string;
+    authToken?: string;
     error?: string;
   }> {
     try {
@@ -167,21 +488,33 @@ export class EnhancedMCPService {
         .maybeSingle();
 
       if (userError) {
+        const authToken = this.generateAuthToken();
+        await this.storePendingAuth(authToken, userEmail);
+
         return {
           isAuthenticated: false,
           authorizationUrl: `${
             this.APP_BASE_URL
-          }/signin?redirect=${encodeURIComponent(this.MCP_CALLBACK_URL)}`,
+          }/signin?mcp_token=${authToken}&redirect=${encodeURIComponent(
+            this.MCP_CALLBACK_URL
+          )}`,
+          authToken: authToken,
           error: "Failed to verify user authentication",
         };
       }
 
       if (!user) {
+        const authToken = this.generateAuthToken();
+        await this.storePendingAuth(authToken, userEmail);
+
         return {
           isAuthenticated: false,
           authorizationUrl: `${
             this.APP_BASE_URL
-          }/signup?redirect=${encodeURIComponent(this.MCP_CALLBACK_URL)}`,
+          }/signup?mcp_token=${authToken}&redirect=${encodeURIComponent(
+            this.MCP_CALLBACK_URL
+          )}`,
+          authToken: authToken,
           error:
             "User not found. Please sign up for SprintIQ to access MCP features.",
         };
@@ -199,11 +532,17 @@ export class EnhancedMCPService {
       const isAllowed = await isUserAllowedServer(userEmail);
 
       if (!isAllowed) {
+        const authToken = this.generateAuthToken();
+        await this.storePendingAuth(authToken, userEmail);
+
         return {
           isAuthenticated: false,
           authorizationUrl: `${
             this.APP_BASE_URL
-          }/signin?redirect=${encodeURIComponent(this.MCP_CALLBACK_URL)}`,
+          }/signin?mcp_token=${authToken}&redirect=${encodeURIComponent(
+            this.MCP_CALLBACK_URL
+          )}`,
+          authToken: authToken,
           error: "Please sign in to SprintIQ to access MCP features.",
         };
       }
@@ -213,11 +552,17 @@ export class EnhancedMCPService {
       };
     } catch (error) {
       console.error("Error checking user authentication:", error);
+      const authToken = this.generateAuthToken();
+      await this.storePendingAuth(authToken, userEmail);
+
       return {
         isAuthenticated: false,
         authorizationUrl: `${
           this.APP_BASE_URL
-        }/signin?redirect=${encodeURIComponent(this.MCP_CALLBACK_URL)}`,
+        }/signin?mcp_token=${authToken}&redirect=${encodeURIComponent(
+          this.MCP_CALLBACK_URL
+        )}`,
+        authToken: authToken,
         error: "Authentication check failed. Please sign in to SprintIQ.",
       };
     }
@@ -280,7 +625,7 @@ export class EnhancedMCPService {
       this.activeConnections.set(userEmail, connectionStatus);
 
       // Store user session
-      this.userSessions.set(userEmail, {
+      await this.storeUserSession(userEmail, {
         user: validation.user,
         connectionId,
       });
@@ -311,7 +656,7 @@ export class EnhancedMCPService {
     workspaceId?: string
   ): Promise<MCPWorkspaceSelection> {
     try {
-      const userSession = this.userSessions.get(userEmail);
+      const userSession = await this.getUserSession(userEmail);
 
       if (!userSession) {
         throw new Error(
@@ -335,8 +680,9 @@ export class EnhancedMCPService {
         }
 
         // Update user session with selected workspace
-        userSession.workspace = selectedWorkspace;
-        this.userSessions.set(userEmail, userSession);
+        await this.updateUserSession(userEmail, {
+          workspace: selectedWorkspace,
+        });
 
         return {
           workspaces: availableWorkspaces,
@@ -348,8 +694,9 @@ export class EnhancedMCPService {
       // If only one workspace, auto-select it
       if (availableWorkspaces.length === 1) {
         const selectedWorkspace = availableWorkspaces[0];
-        userSession.workspace = selectedWorkspace;
-        this.userSessions.set(userEmail, userSession);
+        await this.updateUserSession(userEmail, {
+          workspace: selectedWorkspace,
+        });
 
         return {
           workspaces: availableWorkspaces,
@@ -377,7 +724,7 @@ export class EnhancedMCPService {
     selectedTeamMemberIds?: string[]
   ): Promise<MCPTeamMemberSelection> {
     try {
-      const userSession = this.userSessions.get(userEmail);
+      const userSession = await this.getUserSession(userEmail);
 
       if (!userSession || !userSession.workspace) {
         throw new Error("No active session or workspace selected");
@@ -404,8 +751,9 @@ export class EnhancedMCPService {
         }
 
         // Update user session with selected team members
-        userSession.teamMembers = selectedMembers;
-        this.userSessions.set(userEmail, userSession);
+        await this.updateUserSession(userEmail, {
+          teamMembers: selectedMembers,
+        });
 
         return {
           teamMembers: availableTeamMembers,
@@ -436,97 +784,247 @@ export class EnhancedMCPService {
     selectedTeamMemberIds?: string[]
   ): Promise<MCPToolResult> {
     try {
-      // Step 1: Check active connection
-      const connectionStatus = await this.checkActiveConnection(userEmail);
+      // Input validation
+      if (!userEmail || typeof userEmail !== "string") {
+        return {
+          success: false,
+          error: "Invalid userEmail parameter",
+          metadata: {
+            step: "input_validation",
+            details: "userEmail must be a non-empty string",
+          },
+        };
+      }
 
-      if (!connectionStatus.isConnected) {
-        // Establish connection
-        const connectionResult = await this.establishConnection(userEmail);
+      if (!toolName || typeof toolName !== "string") {
+        return {
+          success: false,
+          error: "Invalid toolName parameter",
+          metadata: {
+            step: "input_validation",
+            details: "toolName must be a non-empty string",
+          },
+        };
+      }
 
-        if (!connectionResult.success) {
+      if (!params || typeof params !== "object") {
+        return {
+          success: false,
+          error: "Invalid params parameter",
+          metadata: {
+            step: "input_validation",
+            details: "params must be an object",
+          },
+        };
+      }
+
+      // Special handling for SPRINTIQ_CHECK_ACTIVE_CONNECTION - it handles its own workflow
+      if (toolName === "SPRINTIQ_CHECK_ACTIVE_CONNECTION") {
+        try {
+          // For connection check, we pass userEmail as a parameter and let it handle the flow
+          const connectionCheckParams = {
+            ...params,
+            userEmail: userEmail,
+          };
+
+          const { SprintiQMCPServer } = await import("./server");
+          const server = new SprintiQMCPServer();
+
+          return await server.callTool(toolName, connectionCheckParams);
+        } catch (error) {
+          console.error("Connection check error:", error);
           return {
             success: false,
-            error: connectionResult.error,
+            error: "Failed to check connection status",
             metadata: {
-              step: "connection_establishment",
-              requiresAuthorization: true,
+              step: "connection_check",
+              details: error instanceof Error ? error.message : "Unknown error",
             },
           };
         }
       }
 
-      // Step 2: Handle workspace selection
-      const workspaceSelection = await this.handleWorkspaceSelection(
-        userEmail,
-        workspaceId
-      );
+      // Step 1: Check active connection
+      try {
+        const connectionStatus = await this.checkActiveConnection();
 
-      if (workspaceSelection.requiresSelection) {
+        if (!connectionStatus.isConnected) {
+          if (connectionStatus.requiresAuthorization) {
+            return {
+              success: false,
+              error: "Authorization required",
+              metadata: {
+                step: "connection_check",
+                requiresAuthorization: true,
+                authorizationUrl: connectionStatus.authorizationUrl,
+                authToken: connectionStatus.authToken,
+                details: connectionStatus.error || "User needs to authenticate",
+              },
+            };
+          }
+
+          // Try to establish connection
+          const connectionResult = await this.establishConnection(userEmail);
+
+          if (!connectionResult.success) {
+            return {
+              success: false,
+              error: connectionResult.error || "Failed to establish connection",
+              metadata: {
+                step: "connection_establishment",
+                requiresAuthorization: connectionResult.requiresAuthorization,
+                authorizationUrl: connectionResult.authorizationUrl,
+                details: "Could not establish a connection for the user",
+              },
+            };
+          }
+        }
+      } catch (error) {
+        console.error("Connection handling error:", error);
         return {
           success: false,
-          error: "Workspace selection required",
-          data: {
-            availableWorkspaces: workspaceSelection.workspaces.map((w) => ({
-              id: w.workspace_id,
-              name: w.name,
-              role: w.role,
-            })),
+          error: "Connection error",
+          metadata: {
+            step: "connection_handling",
+            details: error instanceof Error ? error.message : "Unknown error",
           },
+        };
+      }
+
+      // Step 2: Handle workspace selection
+      try {
+        const workspaceSelection = await this.handleWorkspaceSelection(
+          userEmail,
+          workspaceId
+        );
+
+        if (workspaceSelection.requiresSelection) {
+          return {
+            success: false,
+            error: "Workspace selection required",
+            data: {
+              availableWorkspaces: workspaceSelection.workspaces.map((w) => ({
+                id: w.workspace_id,
+                name: w.name,
+                role: w.role,
+              })),
+            },
+            metadata: {
+              step: "workspace_selection",
+              requiresWorkspaceSelection: true,
+              details: "User needs to select a workspace",
+            },
+          };
+        }
+      } catch (error) {
+        console.error("Workspace selection error:", error);
+        return {
+          success: false,
+          error: "Workspace selection failed",
           metadata: {
             step: "workspace_selection",
-            requiresWorkspaceSelection: true,
+            details: error instanceof Error ? error.message : "Unknown error",
           },
         };
       }
 
       // Step 3: Handle team member selection (if needed for the tool)
       if (this.toolRequiresTeamMembers(toolName)) {
-        const teamMemberSelection = await this.handleTeamMemberSelection(
-          userEmail,
-          selectedTeamMemberIds
-        );
+        try {
+          const teamMemberSelection = await this.handleTeamMemberSelection(
+            userEmail,
+            selectedTeamMemberIds
+          );
 
-        if (teamMemberSelection.requiresSelection) {
+          if (teamMemberSelection.requiresSelection) {
+            return {
+              success: false,
+              error: "Team member selection required",
+              data: {
+                availableTeamMembers: teamMemberSelection.teamMembers.map(
+                  (m) => ({
+                    id: m.id,
+                    name: m.name,
+                    role: m.role,
+                    level: m.level,
+                  })
+                ),
+              },
+              metadata: {
+                step: "team_member_selection",
+                requiresTeamMemberSelection: true,
+                details: "User needs to select team members",
+              },
+            };
+          }
+        } catch (error) {
+          console.error("Team member selection error:", error);
           return {
             success: false,
-            error: "Team member selection required",
-            data: {
-              availableTeamMembers: teamMemberSelection.teamMembers.map(
-                (m) => ({
-                  id: m.id,
-                  name: m.name,
-                  role: m.role,
-                  level: m.level,
-                })
-              ),
-            },
+            error: "Team member selection failed",
             metadata: {
               step: "team_member_selection",
-              requiresTeamMemberSelection: true,
+              details: error instanceof Error ? error.message : "Unknown error",
             },
           };
         }
       }
 
       // Step 4: Execute the tool
-      const userSession = this.userSessions.get(userEmail)!;
-      const context = this.createExecutionContext(userSession);
+      try {
+        const userSession = await this.getUserSession(userEmail);
+        if (!userSession) {
+          return {
+            success: false,
+            error: "Invalid session",
+            metadata: {
+              step: "execution",
+              details: "User session not found. Please try reconnecting.",
+            },
+          };
+        }
 
-      const result = await this.executeTool(toolName, params, context);
+        const context = this.createExecutionContext(userSession);
+        const result = await this.executeTool(toolName, params, context);
 
-      // Step 5: Handle post-execution based on tool type
-      if (toolName === "generateUserStories") {
-        return await this.handleStoryGenerationResult(result, userSession);
+        // Step 5: Handle post-execution based on tool type
+        if (toolName === "SPRINTIQ_GENERATE_USER_STORIES") {
+          try {
+            return await this.handleStoryGenerationResult(result, userSession);
+          } catch (error) {
+            console.error("Story generation post-processing error:", error);
+            return {
+              success: false,
+              error: "Story generation post-processing failed",
+              metadata: {
+                step: "post_execution",
+                details:
+                  error instanceof Error ? error.message : "Unknown error",
+              },
+            };
+          }
+        }
+
+        return result;
+      } catch (error) {
+        console.error("Tool execution error:", error);
+        return {
+          success: false,
+          error: "Tool execution failed",
+          metadata: {
+            step: "execution",
+            details: error instanceof Error ? error.message : "Unknown error",
+          },
+        };
       }
-
-      return result;
     } catch (error) {
-      console.error("Error executing tool with workflow:", error);
+      console.error("Unexpected error in executeToolWithWorkflow:", error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : "Unknown error",
+        error: "Internal workflow error",
         metadata: {
-          step: "tool_execution",
+          step: "workflow",
+          details: error instanceof Error ? error.message : "Unknown error",
         },
       };
     }
@@ -584,7 +1082,7 @@ export class EnhancedMCPService {
     }
   ): Promise<MCPToolResult> {
     try {
-      const userSession = this.userSessions.get(userEmail);
+      const userSession = await this.getUserSession(userEmail);
 
       if (!userSession || !userSession.workspace) {
         throw new Error("No active session or workspace");
@@ -778,10 +1276,10 @@ export class EnhancedMCPService {
    */
   private toolRequiresTeamMembers(toolName: string): boolean {
     const teamRequiredTools = [
-      "generateUserStories",
-      "analyzeTaskPriority",
-      "assignTask",
-      "getTeamCapacity",
+      "SPRINTIQ_GENERATE_USER_STORIES",
+      "SPRINTIQ_ANALYZE_TASK_PRIORITY",
+      "SPRINTIQ_ASSIGN_TASK",
+      "SPRINTIQ_GET_TEAM_CAPACITY",
     ];
     return teamRequiredTools.includes(toolName);
   }
@@ -817,12 +1315,23 @@ export class EnhancedMCPService {
 
       const result = await server.callTool(toolName, { ...params, context });
 
+      // The server already returns an MCPToolResult, so we can return it directly
+      if (result && typeof result === "object" && "success" in result) {
+        return result;
+      }
+
+      // If the result is not in the expected format, wrap it
       return {
         success: true,
         data: result,
         metadata: {
           tool: toolName,
-          executedAt: new Date(),
+          executedAt: new Date().toISOString(),
+          context: {
+            workspaceId: context.workspaceId,
+            userId: context.userId,
+            email: context.email,
+          },
         },
       };
     } catch (error) {
@@ -830,6 +1339,17 @@ export class EnhancedMCPService {
       return {
         success: false,
         error: error instanceof Error ? error.message : "Tool execution failed",
+        metadata: {
+          tool: toolName,
+          executedAt: new Date().toISOString(),
+          errorType:
+            error instanceof Error ? error.constructor.name : "UnknownError",
+          context: {
+            workspaceId: context.workspaceId,
+            userId: context.userId,
+            email: context.email,
+          },
+        },
       };
     }
   }
@@ -846,7 +1366,7 @@ export class EnhancedMCPService {
     for (const [email, connection] of this.activeConnections.entries()) {
       if (connection.lastActivity && connection.lastActivity < cutoff) {
         this.activeConnections.delete(email);
-        this.userSessions.delete(email);
+        // No need to delete from userSessions here, as it's now database-backed
         console.log(`Cleaned up inactive connection for ${email}`);
       }
     }
@@ -857,7 +1377,7 @@ export class EnhancedMCPService {
    */
   async disconnectUser(userEmail: string): Promise<void> {
     this.activeConnections.delete(userEmail);
-    this.userSessions.delete(userEmail);
+    // No need to delete from userSessions here, as it's now database-backed
     console.log(`Disconnected user session for ${userEmail}`);
   }
 

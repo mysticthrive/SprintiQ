@@ -14,7 +14,9 @@ type AuthContextType = {
   isLoading: boolean;
   signIn: (
     email: string,
-    password: string
+    password: string,
+    mcpToken?: string,
+    redirectUrl?: string
   ) => Promise<{
     error: any | null;
     data: any | null;
@@ -27,7 +29,7 @@ type AuthContextType = {
     error: any | null;
     data: any | null;
   }>;
-  signInWithGoogle: () => Promise<void>;
+  signInWithGoogle: (mcpToken?: string, redirectUrl?: string) => Promise<void>;
   signOut: () => Promise<void>;
 };
 
@@ -67,7 +69,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, [router, supabase.auth]);
 
-  const signIn = async (email: string, password: string) => {
+  const signIn = async (
+    email: string,
+    password: string,
+    mcpToken?: string,
+    redirectUrl?: string
+  ) => {
     // Check if user is allowed in users table
     const { data: userRecord, error: userError } = await supabase
       .from("users")
@@ -86,7 +93,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       password,
     });
     if (!result.error && result.data.session) {
-      router.push("/dashboard");
+      // If MCP token is provided, redirect to MCP callback
+      if (mcpToken && redirectUrl) {
+        const mcpCallbackUrl = new URL(redirectUrl);
+        mcpCallbackUrl.searchParams.set("mcp_token", mcpToken);
+        mcpCallbackUrl.searchParams.set("email", email);
+        window.location.href = mcpCallbackUrl.toString();
+      } else {
+        router.push("/dashboard");
+      }
     }
     return result;
   };
@@ -128,12 +143,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return result;
   };
 
-  const signInWithGoogle = async () => {
+  const signInWithGoogle = async (mcpToken?: string, redirectUrl?: string) => {
     try {
+      // Build the callback URL with MCP parameters if provided
+      let callbackUrl = `${window.location.origin}/auth/callback`;
+
+      if (mcpToken && redirectUrl) {
+        const params = new URLSearchParams();
+        params.set("mcp_token", mcpToken);
+        params.set("redirect", redirectUrl);
+        callbackUrl += `?${params.toString()}`;
+      }
+
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo: `${window.location.origin}/auth/callback`,
+          redirectTo: callbackUrl,
         },
       });
 

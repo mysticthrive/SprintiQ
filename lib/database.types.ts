@@ -953,6 +953,38 @@ export interface Database {
           updated_at?: string;
         };
       };
+      mcp_auth_tokens: {
+        Row: {
+          id: string;
+          token: string;
+          email: string;
+          status: string;
+          session_data: Json | null;
+          created_at: string;
+          expires_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          token: string;
+          email?: string;
+          status?: string;
+          session_data?: Json | null;
+          created_at?: string;
+          expires_at: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          token?: string;
+          email?: string;
+          status?: string;
+          session_data?: Json | null;
+          created_at?: string;
+          expires_at?: string;
+          updated_at?: string;
+        };
+      };
     };
     Views: {
       [_ in never]: never;

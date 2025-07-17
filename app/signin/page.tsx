@@ -2,7 +2,8 @@
 
 import type React from "react";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
@@ -18,7 +19,26 @@ export default function SignInPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [mcpToken, setMcpToken] = useState<string | null>(null);
+  const [redirectUrl, setRedirectUrl] = useState<string | null>(null);
   const { signIn, signInWithGoogle } = useAuth();
+  const searchParams = useSearchParams();
+
+  useEffect(() => {
+    // Check for MCP token and redirect URL in search params
+    const token = searchParams.get("mcp_token");
+    const redirect = searchParams.get("redirect");
+
+    if (token) {
+      setMcpToken(token);
+      console.log("MCP token found:", token);
+    }
+
+    if (redirect) {
+      setRedirectUrl(redirect);
+      console.log("Redirect URL found:", redirect);
+    }
+  }, [searchParams]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -26,7 +46,12 @@ export default function SignInPage() {
     setIsLoading(true);
 
     try {
-      const { error } = await signIn(email, password);
+      const { error } = await signIn(
+        email,
+        password,
+        mcpToken ?? undefined,
+        redirectUrl ?? undefined
+      );
       if (error) {
         setError(error.message);
       }
@@ -40,7 +65,7 @@ export default function SignInPage() {
   const handleGoogleSignIn = async () => {
     setError(null);
     try {
-      await signInWithGoogle();
+      await signInWithGoogle(mcpToken ?? undefined, redirectUrl ?? undefined);
     } catch (err: any) {
       setError(
         err.message ||
@@ -77,13 +102,16 @@ export default function SignInPage() {
 
           <div className="space-y-6">
             <h1 className="text-5xl lg:text-6xl font-bold bg-gradient-to-r from-white via-emerald-100 to-emerald-200 bg-clip-text text-transparent leading-tight">
-              Welcome
+              {mcpToken ? "MCP" : "Welcome"}
               <br />
-              <span className="text-emerald-300">back</span>
+              <span className="text-emerald-300">
+                {mcpToken ? "Authentication" : "back"}
+              </span>
             </h1>
             <p className="text-emerald-100/90 text-xl leading-relaxed max-w-md mx-auto lg:mx-0">
-              Sign in to your account and continue managing your projects with
-              ease
+              {mcpToken
+                ? "Sign in to authorize SprintiQ for MCP access"
+                : "Sign in to your account and continue managing your projects with ease"}
             </p>
           </div>
 
@@ -91,7 +119,11 @@ export default function SignInPage() {
           <div className="hidden lg:block space-y-4 pt-8">
             <div className="flex items-center space-x-3 text-emerald-100">
               <div className="w-2 h-2 bg-emerald-400 rounded-full"></div>
-              <span>Access all your projects instantly</span>
+              <span>
+                {mcpToken
+                  ? "Secure MCP integration"
+                  : "Access all your projects instantly"}
+              </span>
             </div>
             <div className="flex items-center space-x-3 text-emerald-100">
               <div className="w-2 h-2 bg-emerald-400 rounded-full"></div>
@@ -99,7 +131,11 @@ export default function SignInPage() {
             </div>
             <div className="flex items-center space-x-3 text-emerald-100">
               <div className="w-2 h-2 bg-emerald-400 rounded-full"></div>
-              <span>Sync across all your devices</span>
+              <span>
+                {mcpToken
+                  ? "Works with Cursor and Claude"
+                  : "Sync across all your devices"}
+              </span>
             </div>
           </div>
         </div>
@@ -109,12 +145,26 @@ export default function SignInPage() {
           <div className="bg-white/10 backdrop-blur-xl rounded-3xl shadow-2xl p-8 lg:p-10 border border-emerald-500/20 hover:border-emerald-500/30 transition-all duration-300">
             <div className="mb-8">
               <h2 className="text-2xl font-bold text-white mb-2">
-                Sign in to your account
+                {mcpToken ? "MCP Authorization" : "Sign in to your account"}
               </h2>
               <p className="text-emerald-100/80">
-                Welcome back! Please enter your details
+                {mcpToken
+                  ? "Authorize SprintiQ to work with your MCP client"
+                  : "Welcome back! Please enter your details"}
               </p>
             </div>
+
+            {mcpToken && (
+              <div className="mb-6 p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+                <div className="flex items-center space-x-2 text-blue-300">
+                  <Zap className="h-4 w-4" />
+                  <span className="text-sm font-medium">MCP Integration</span>
+                </div>
+                <p className="text-xs text-blue-200 mt-1">
+                  This will allow your MCP client to access SprintiQ features
+                </p>
+              </div>
+            )}
 
             {error && (
               <Alert
@@ -213,6 +263,8 @@ export default function SignInPage() {
                     <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
                     <span>Signing in...</span>
                   </div>
+                ) : mcpToken ? (
+                  "Authorize & Sign In"
                 ) : (
                   "Sign In"
                 )}
@@ -257,7 +309,9 @@ export default function SignInPage() {
                   d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
                 />
               </svg>
-              <span className="font-medium">Continue with Google</span>
+              <span className="font-medium">
+                {mcpToken ? "Authorize with Google" : "Continue with Google"}
+              </span>
             </Button>
 
             {/* Sign Up Link */}

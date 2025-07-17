@@ -14,26 +14,92 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const code = searchParams.get("code");
     const state = searchParams.get("state");
+    const mcpToken = searchParams.get("mcp_token");
     const userEmail = searchParams.get("email");
+    const error = searchParams.get("error");
+    const errorDescription = searchParams.get("error_description");
 
-    if (!code) {
+    console.log(`[MCP Callback] Received request with params:`, {
+      code: !!code,
+      state: !!state,
+      mcpToken,
+      userEmail,
+      error,
+      errorDescription,
+    });
+
+    // Handle auth errors from the regular auth callback
+    if (error) {
+      console.error(
+        `[MCP Callback] Auth error received:`,
+        error,
+        errorDescription
+      );
+
+      if (mcpToken) {
+        // Mark authentication as failed for this token
+        try {
+          await enhancedMCPService.updatePendingAuth(mcpToken, {
+            status: "failed",
+          });
+        } catch (updateError) {
+          console.error(
+            `[MCP Callback] Failed to update auth status:`,
+            updateError
+          );
+        }
+      }
+
       return NextResponse.redirect(
         new URL(
-          "/auth/error?message=Invalid%20authorization%20code",
+          `/auth/error?message=${encodeURIComponent(
+            errorDescription || error
+          )}`,
           request.url
         )
       );
     }
 
-    // Handle Supabase auth callback
+    // Create Supabase client
     const supabase = await createServerSupabaseClient();
+
+    // Get the current session instead of exchanging the code again
+    // The code was already exchanged in the regular auth callback
     const {
       data: { session },
-      error,
-    } = await supabase.auth.exchangeCodeForSession(code);
+      error: sessionError,
+    } = await supabase.auth.getSession();
 
-    if (error || !session) {
-      console.error("Auth callback error:", error);
+    if (sessionError || !session) {
+      console.error("MCP auth callback session error:", sessionError);
+
+      // If we have an MCP token, mark it as failed
+      if (mcpToken) {
+        console.log(
+          `[MCP Callback] Checking auth status for failed session, token: ${mcpToken}`
+        );
+        try {
+          // Mark authentication as failed for this token
+          const authStatus = await enhancedMCPService.checkAuthenticationStatus(
+            mcpToken
+          );
+          console.log(
+            `[MCP Callback] Auth status for token ${mcpToken}:`,
+            authStatus
+          );
+          if (authStatus.status === "pending") {
+            await enhancedMCPService.updatePendingAuth(mcpToken, {
+              status: "failed",
+            });
+          }
+        } catch (updateError) {
+          console.error(
+            `[MCP Callback] Failed to update auth status:`,
+            updateError
+          );
+        }
+      }
+
       return NextResponse.redirect(
         new URL("/auth/error?message=Authentication%20failed", request.url)
       );
@@ -43,37 +109,116 @@ export async function GET(request: NextRequest) {
     const email = session.user.email;
 
     if (!email) {
+      console.error("[MCP Callback] No email found in session");
       return NextResponse.redirect(
         new URL("/auth/error?message=Email%20not%20found", request.url)
       );
     }
 
-    // Try to establish MCP connection
-    const connectionResult = await enhancedMCPService.establishConnection(
-      email
-    );
+    console.log(`[MCP Callback] Session email: ${email}`);
 
-    if (!connectionResult.success) {
-      console.error("MCP connection failed:", connectionResult.error);
-      return NextResponse.redirect(
-        new URL(
-          `/auth/error?message=${encodeURIComponent(
-            connectionResult.error || "MCP connection failed"
-          )}`,
-          request.url
-        )
+    // Check if user is allowed (but don't block MCP authentication if they're not)
+    const { data: userRecord } = await supabase
+      .from("users")
+      .select("allowed")
+      .eq("email", email.toLowerCase().trim())
+      .maybeSingle();
+
+    const isAllowed = userRecord?.allowed === true;
+    console.log(`[MCP Callback] User allowed status: ${isAllowed}`);
+
+    // If we have an MCP token, complete the authentication
+    if (mcpToken) {
+      console.log(
+        `[MCP Callback] Completing authentication for token: ${mcpToken}`
       );
+
+      try {
+        const completion = await enhancedMCPService.completeAuthentication(
+          mcpToken,
+          email
+        );
+
+        console.log(`[MCP Callback] Completion result:`, completion);
+
+        if (completion.success) {
+          // Success! Redirect to a special page that shows instructions for Cursor
+          const successUrl = new URL("/mcp/auth/success", request.url);
+          successUrl.searchParams.set("token", mcpToken);
+          successUrl.searchParams.set("email", email);
+          successUrl.searchParams.set("type", "cursor");
+
+          // Add allowed status for user feedback
+          if (!isAllowed) {
+            successUrl.searchParams.set("warning", "account_not_activated");
+          }
+
+          console.log(
+            `[MCP Callback] Redirecting to success page: ${successUrl.toString()}`
+          );
+          return NextResponse.redirect(successUrl);
+        } else {
+          console.error(
+            `[MCP Callback] Authentication completion failed:`,
+            completion.error
+          );
+          return NextResponse.redirect(
+            new URL(
+              `/auth/error?message=${encodeURIComponent(
+                completion.error || "Authentication completion failed"
+              )}`,
+              request.url
+            )
+          );
+        }
+      } catch (completionError) {
+        console.error(
+          `[MCP Callback] Error during completion:`,
+          completionError
+        );
+        return NextResponse.redirect(
+          new URL(
+            "/auth/error?message=Authentication%20completion%20error",
+            request.url
+          )
+        );
+      }
     }
 
-    // Success! Redirect to MCP success page or client app
-    const successUrl = new URL("/mcp/auth/success", request.url);
-    successUrl.searchParams.set(
-      "connectionId",
-      connectionResult.connectionId || ""
-    );
-    successUrl.searchParams.set("email", email);
+    // Legacy flow - try to establish MCP connection directly
+    try {
+      const connectionResult = await enhancedMCPService.establishConnection(
+        email
+      );
 
-    return NextResponse.redirect(successUrl);
+      if (!connectionResult.success) {
+        console.error("MCP connection failed:", connectionResult.error);
+        return NextResponse.redirect(
+          new URL(
+            `/auth/error?message=${encodeURIComponent(
+              connectionResult.error || "MCP connection failed"
+            )}`,
+            request.url
+          )
+        );
+      }
+
+      // Success! Redirect to MCP success page
+      const successUrl = new URL("/mcp/auth/success", request.url);
+      successUrl.searchParams.set(
+        "connectionId",
+        connectionResult.connectionId || ""
+      );
+      successUrl.searchParams.set("email", email);
+      successUrl.searchParams.set("type", "legacy");
+
+      return NextResponse.redirect(successUrl);
+    } catch (connectionError) {
+      console.error("MCP connection error:", connectionError);
+      return NextResponse.redirect(
+        new URL("/auth/error?message=MCP%20connection%20error", request.url)
+      );
+    }
   } catch (error) {
     console.error("MCP auth callback error:", error);
     return NextResponse.redirect(
@@ -85,17 +230,33 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { userEmail, action } = body;
-
-    if (!userEmail) {
-      return NextResponse.json(
-        { error: "User email is required" },
-        { status: 400 }
-      );
-    }
+    const { userEmail, action, token } = body;
 
     switch (action) {
+      case "checkAuthStatus":
+        if (!token) {
+          return NextResponse.json(
+            { error: "Token is required for checkAuthStatus" },
+            { status: 400 }
+          );
+        }
+
+        const authStatus = await enhancedMCPService.checkAuthenticationStatus(
+          token
+        );
+        return NextResponse.json({
+          success: true,
+          authStatus,
+        });
+
       case "checkAuth":
+        if (!userEmail) {
+          return NextResponse.json(
+            { error: "User email is required for checkAuth" },
+            { status: 400 }
+          );
+        }
+
         const authInfo = await enhancedMCPService.getAuthorizationInfo(
           userEmail
         );
@@ -105,6 +266,13 @@ export async function POST(request: NextRequest) {
         });
 
       case "establishConnection":
+        if (!userEmail) {
+          return NextResponse.json(
+            { error: "User email is required for establishConnection" },
+            { status: 400 }
+          );
+        }
+
         const connectionResult = await enhancedMCPService.establishConnection(
           userEmail
         );

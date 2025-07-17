@@ -37,17 +37,17 @@ Exposes SprintiQ's capabilities to external MCP clients.
 
 **Available Tools:**
 
-- `createTask` - Create new tasks
-- `updateTask` - Update existing tasks
-- `deleteTask` - Delete tasks
-- `getTask` - Retrieve task details
-- `listTasks` - List tasks with filters
-- `generateUserStories` - AI-powered story generation
-- `analyzeTaskPriority` - Priority analysis
-- `findSimilarTasks` - Similar task search
-- `generateSprintGoal` - Sprint goal generation
-- `getTeamMembers` - Team management
-- `getProjectAnalytics` - Analytics and reporting
+- `SPRINTIQ_CREATE_TASK` - Create new tasks
+- `SPRINTIQ_UPDATE_TASK` - Update existing tasks
+- `SPRINTIQ_DELETE_TASK` - Delete tasks
+- `SPRINTIQ_GET_TASK` - Retrieve task details
+- `SPRINTIQ_LIST_TASKS` - List tasks with filters
+- `SPRINTIQ_GENERATE_USER_STORIES` - AI-powered story generation
+- `SPRINTIQ_ANALYZE_TASK_PRIORITY` - Priority analysis
+- `SPRINTIQ_FIND_SIMILAR_TASKS` - Similar task search
+- `SPRINTIQ_GENERATE_SPRINT_GOAL` - Sprint goal generation
+- `SPRINTIQ_GET_TEAM_MEMBERS` - Team management
+- `SPRINTIQ_GET_PROJECT_ANALYTICS` - Analytics and reporting
 
 **API Endpoint:** `POST /api/mcp/server`
 
@@ -73,7 +73,7 @@ High-level orchestration layer for MCP operations.
 - `callTool(server, tool, params)` - Execute tool on server
 - `searchTools(query)` - Search available tools
 - `generateStoriesWithMCP(params)` - Enhanced story generation
-- `findSimilarTasksWithMCP(params)` - Multi-source search
+- `SPRINTIQ_FIND_SIMILAR_TASKS(params)` - Multi-source search
 - `healthCheck()` - Monitor server health
 
 ### 4. Admin Interface (`components/admin/mcp/mcp-manager.tsx`)
@@ -149,7 +149,7 @@ import { mcpService } from "@/lib/mcp/service";
 
 const result = await mcpService.callTool(
   "internal",
-  "createTask",
+  "SPRINTIQ_CREATE_TASK",
   {
     title: "New Task",
     description: "Task description",
@@ -183,7 +183,7 @@ const stories = await mcpService.generateStoriesWithMCP({
 ### 3. Multi-Source Task Search
 
 ```typescript
-const results = await mcpService.findSimilarTasksWithMCP({
+const results = await mcpService.SPRINTIQ_FIND_SIMILAR_TASKS({
   query: "authentication bug",
   sources: ["internal", "jira-server"],
   limit: 10,
@@ -236,7 +236,11 @@ const handleAIRequest = async (request: string) => {
 ```typescript
 // Enhanced task creation with MCP
 const createTaskWithMCP = async (taskData: any) => {
-  const result = await mcpService.callTool("internal", "createTask", taskData);
+  const result = await mcpService.callTool(
+    "internal",
+    "SPRINTIQ_CREATE_TASK",
+    taskData
+  );
 
   if (result.success) {
     // Optionally sync with external systems

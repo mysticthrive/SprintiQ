@@ -65,19 +65,74 @@ export async function OPTIONS(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   const corsHeaders = handleCors(request);
+  let messageId: string | number | null = null;
 
   try {
+    // Validate content type
+    const contentType = request.headers.get("content-type");
+    if (!contentType?.includes("application/json")) {
+      return NextResponse.json(
+        {
+          jsonrpc: "2.0",
+          id: null,
+          error: {
+            code: -32700,
+            message: "Invalid content type. Expected application/json",
+          },
+        },
+        { status: 400, headers: corsHeaders }
+      );
+    }
+
     // Get client identifier for rate limiting
     const clientId =
       request.headers.get("x-forwarded-for") ||
       request.headers.get("x-real-ip") ||
       "anonymous";
 
+    // Parse the message first to get the ID
+    let message: MCPMessage;
+    try {
+      message = await request.json();
+      messageId = message.id || null;
+    } catch (error) {
+      return NextResponse.json(
+        {
+          jsonrpc: "2.0",
+          id: null,
+          error: {
+            code: -32700,
+            message: "Parse error: Invalid JSON",
+            data:
+              error instanceof Error ? error.message : "Invalid JSON format",
+          },
+        },
+        { status: 400, headers: corsHeaders }
+      );
+    }
+
+    // Validate JSON-RPC format
+    if (!message.jsonrpc || message.jsonrpc !== "2.0" || !message.method) {
+      return NextResponse.json(
+        {
+          jsonrpc: "2.0",
+          id: messageId,
+          error: {
+            code: -32600,
+            message: "Invalid Request",
+            data: "Request must include jsonrpc: '2.0' and method",
+          },
+        },
+        { status: 400, headers: corsHeaders }
+      );
+    }
+
     // Check rate limit
     if (!checkRateLimit(clientId)) {
       return NextResponse.json(
         {
           jsonrpc: "2.0",
+          id: messageId,
           error: {
             code: -32000,
             message: "Rate limit exceeded. Please try again later.",
@@ -92,8 +147,6 @@ export async function POST(request: NextRequest) {
         }
       );
     }
-
-    const message: MCPMessage = await request.json();
 
     // Handle different MCP methods
     switch (message.method) {
@@ -110,44 +163,89 @@ export async function POST(request: NextRequest) {
         return handleListTools(message, corsHeaders);
 
       case "tools/call":
+        if (!message.params || !message.params.name) {
+          return NextResponse.json(
+            {
+              jsonrpc: "2.0",
+              id: messageId,
+              error: {
+                code: -32602,
+                message: "Invalid params",
+                data: "tools/call requires params.name",
+              },
+            },
+            { status: 400, headers: corsHeaders }
+          );
+        }
         return handleCallTool(message, corsHeaders);
 
       case "resources/list":
         return handleListResources(message, corsHeaders);
 
       case "resources/read":
+        if (!message.params || !message.params.uri) {
+          return NextResponse.json(
+            {
+              jsonrpc: "2.0",
+              id: messageId,
+              error: {
+                code: -32602,
+                message: "Invalid params",
+                data: "resources/read requires params.uri",
+              },
+            },
+            { status: 400, headers: corsHeaders }
+          );
+        }
         return handleReadResource(message, corsHeaders);
 
       case "prompts/list":
         return handleListPrompts(message, corsHeaders);
 
       case "prompts/get":
+        if (!message.params || !message.params.name) {
+          return NextResponse.json(
+            {
+              jsonrpc: "2.0",
+              id: messageId,
+              error: {
+                code: -32602,
+                message: "Invalid params",
+                data: "prompts/get requires params.name",
+              },
+            },
+            { status: 400, headers: corsHeaders }
+          );
+        }
         return handleGetPrompt(message, corsHeaders);
 
       default:
         return NextResponse.json(
           {
             jsonrpc: "2.0",
-            id: message.id,
+            id: messageId,
             error: {
               code: -32601,
               message: `Method not found: ${message.method}`,
+              data: "Supported methods: initialize, initialized, server/info, tools/list, tools/call, resources/list, resources/read, prompts/list, prompts/get",
             },
           },
           { status: 400, headers: corsHeaders }
         );
     }
   } catch (error) {
+    console.error("MCP Server error:", error);
     return NextResponse.json(
       {
         jsonrpc: "2.0",
+        id: messageId,
         error: {
-          code: -32700,
-          message: "Parse error",
+          code: -32603,
+          message: "Internal error",
           data: error instanceof Error ? error.message : "Unknown error",
         },
       },
-      { status: 400, headers: corsHeaders }
+      { status: 500, headers: corsHeaders }
     );
   }
 }
@@ -222,36 +320,155 @@ async function handleCallTool(
   try {
     const { name, arguments: args } = message.params;
 
-    // Check if user email is provided for enhanced workflow
-    if (args.userEmail) {
-      // Use enhanced workflow with proper user validation
-      const result = await enhancedMCPService.executeToolWithWorkflow(
-        args.userEmail,
-        name,
-        args,
-        args.workspaceId,
-        args.selectedTeamMemberIds
-      );
-
-      // Include authorization URL in metadata if needed
-      if (!result.success && result.metadata?.requiresAuthorization) {
-        const authInfo = await enhancedMCPService.getAuthorizationInfo(
-          args.userEmail
-        );
-        result.metadata.authorizationUrl = authInfo.authorizationUrl;
-      }
-
+    // Validate required parameters
+    if (!name || typeof name !== "string") {
       return NextResponse.json(
         {
           jsonrpc: "2.0",
           id: message.id,
-          result: result,
+          error: {
+            code: -32602,
+            message: "Invalid params",
+            data: "Tool name must be a non-empty string",
+          },
         },
-        { headers: corsHeaders }
+        { status: 400, headers: corsHeaders }
       );
     }
 
-    // Fallback to basic server call (requires proper context)
+    if (!args || typeof args !== "object") {
+      return NextResponse.json(
+        {
+          jsonrpc: "2.0",
+          id: message.id,
+          error: {
+            code: -32602,
+            message: "Invalid params",
+            data: "Tool arguments must be an object",
+          },
+        },
+        { status: 400, headers: corsHeaders }
+      );
+    }
+
+    // Special handling for SPRINTIQ_CHECK_ACTIVE_CONNECTION
+    if (name === "SPRINTIQ_CHECK_ACTIVE_CONNECTION") {
+      try {
+        const result = await mcpServer.callTool(name, args);
+
+        // Always return the result as-is for this tool
+        if (result.success) {
+          return NextResponse.json(
+            {
+              jsonrpc: "2.0",
+              id: message.id,
+              result: {
+                content: [
+                  {
+                    type: "text",
+                    text:
+                      result.data.message +
+                      "\n\n" +
+                      result.data.instructions.join("\n") +
+                      "\n\n" +
+                      result.data.nextSteps,
+                  },
+                ],
+                metadata: result.metadata,
+              },
+            },
+            { headers: corsHeaders }
+          );
+        } else {
+          return NextResponse.json(
+            {
+              jsonrpc: "2.0",
+              id: message.id,
+              error: {
+                code: -32603,
+                message: result.error || "Failed to check connection status",
+                data: result.metadata,
+              },
+            },
+            { status: 500, headers: corsHeaders }
+          );
+        }
+      } catch (error) {
+        console.error("Connection check error:", error);
+        return NextResponse.json(
+          {
+            jsonrpc: "2.0",
+            id: message.id,
+            error: {
+              code: -32603,
+              message: "Failed to check connection status",
+              data: error instanceof Error ? error.message : "Unknown error",
+            },
+          },
+          { status: 500, headers: corsHeaders }
+        );
+      }
+    }
+
+    // Special handling for SPRINTIQ_GET_AUTHENTICATED_USER
+    if (name === "SPRINTIQ_GET_AUTHENTICATED_USER") {
+      try {
+        const result = await mcpServer.callTool(name, args);
+
+        if (result.success) {
+          return NextResponse.json(
+            {
+              jsonrpc: "2.0",
+              id: message.id,
+              result: {
+                content: [
+                  {
+                    type: "text",
+                    text:
+                      result.data.message +
+                      "\n\n" +
+                      result.data.instructions.join("\n") +
+                      "\n\n" +
+                      result.data.nextSteps,
+                  },
+                ],
+                metadata: result.metadata,
+              },
+            },
+            { headers: corsHeaders }
+          );
+        } else {
+          return NextResponse.json(
+            {
+              jsonrpc: "2.0",
+              id: message.id,
+              error: {
+                code: -32603,
+                message: result.error || "Failed to get authenticated user",
+                data: result.metadata,
+              },
+            },
+            { status: 500, headers: corsHeaders }
+          );
+        }
+      } catch (error) {
+        console.error("Get authenticated user error:", error);
+        return NextResponse.json(
+          {
+            jsonrpc: "2.0",
+            id: message.id,
+            error: {
+              code: -32603,
+              message: "Failed to get authenticated user",
+              data: error instanceof Error ? error.message : "Unknown error",
+            },
+          },
+          { status: 500, headers: corsHeaders }
+        );
+      }
+    }
+
+    // For all other tools, require proper context
     if (!args.context || !args.context.workspaceId || !args.context.userId) {
       return NextResponse.json(
         {
@@ -259,26 +476,85 @@ async function handleCallTool(
           id: message.id,
           error: {
             code: -32602,
-            message:
-              "Invalid params: Either userEmail or complete context (workspaceId, userId) is required",
-            data: "For enhanced workflow, provide userEmail. For direct calls, provide context with workspaceId and userId.",
+            message: "Invalid params: context is required",
+            data: {
+              message:
+                "Tool execution requires proper context with workspaceId and userId",
+              required: {
+                context: {
+                  workspaceId: "string (required)",
+                  userId: "string (required)",
+                  email: "string (optional)",
+                },
+              },
+            },
           },
         },
         { status: 400, headers: corsHeaders }
       );
     }
 
-    const result = await mcpServer.callTool(name, args);
+    try {
+      const result = await mcpServer.callTool(name, args);
 
-    return NextResponse.json(
-      {
-        jsonrpc: "2.0",
-        id: message.id,
-        result: result,
-      },
-      { headers: corsHeaders }
-    );
+      if (result.success) {
+        return NextResponse.json(
+          {
+            jsonrpc: "2.0",
+            id: message.id,
+            result: {
+              content: result.data,
+              metadata: result.metadata,
+            },
+          },
+          { headers: corsHeaders }
+        );
+      } else {
+        // Handle different types of errors
+        let statusCode = 500;
+        let errorCode = -32603;
+        let errorMessage = result.error || "Tool execution failed";
+
+        if (result.error?.toLowerCase().includes("not found")) {
+          statusCode = 404;
+          errorCode = -32004;
+          errorMessage = result.error;
+        } else if (result.error?.toLowerCase().includes("invalid")) {
+          statusCode = 400;
+          errorCode = -32602;
+          errorMessage = result.error;
+        }
+
+        return NextResponse.json(
+          {
+            jsonrpc: "2.0",
+            id: message.id,
+            error: {
+              code: errorCode,
+              message: errorMessage,
+              data: result.metadata,
+            },
+          },
+          { status: statusCode, headers: corsHeaders }
+        );
+      }
+    } catch (error) {
+      console.error("Tool execution error:", error);
+      return NextResponse.json(
+        {
+          jsonrpc: "2.0",
+          id: message.id,
+          error: {
+            code: -32603,
+            message: "Tool execution failed",
+            data: error instanceof Error ? error.message : "Unknown error",
+          },
+        },
+        { status: 500, headers: corsHeaders }
+      );
+    }
   } catch (error) {
+    console.error("Unexpected error in handleCallTool:", error);
     return NextResponse.json(
       {
         jsonrpc: "2.0",

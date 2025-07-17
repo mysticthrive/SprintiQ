@@ -40,7 +40,7 @@ export class MCPService {
    * Check if user has active SprintiQ connection
    */
   async checkActiveConnection(userEmail: string) {
-    return await enhancedMCPService.checkActiveConnection(userEmail);
+    return await enhancedMCPService.checkActiveConnection();
   }
 
   /**
@@ -362,7 +362,7 @@ export class MCPService {
     // Use enhanced workflow for story generation
     return await enhancedMCPService.executeToolWithWorkflow(
       userEmail,
-      "generateUserStories",
+      "SPRINTIQ_GENERATE_USER_STORIES",
       mcpParams,
       workspaceId
     );
@@ -411,7 +411,7 @@ export class MCPService {
     try {
       const result = await enhancedMCPService.executeToolWithWorkflow(
         userEmail,
-        "findSimilarTasks",
+        "SPRINTIQ_FIND_SIMILAR_TASKS",
         mcpParams,
         workspaceId
       );

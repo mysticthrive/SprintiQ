@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 
-const http = require("http");
+const https = require("https");
 const readline = require("readline");
 
-const MCP_SERVER_URL = "http://localhost:3000/api/mcp/server";
+const MCP_SERVER_URL = "https://app.sprintiq.ai/api/mcp/server";
 
 // Create readline interface for JSON-RPC communication
 const rl = readline.createInterface({
@@ -42,8 +42,8 @@ function makeHttpRequest(data) {
     const postData = JSON.stringify(data);
 
     const options = {
-      hostname: "localhost",
-      port: 3000,
+      hostname: "app.sprintiq.ai",
+      port: 443,
       path: "/api/mcp/server",
       method: "POST",
       headers: {
@@ -52,7 +52,7 @@ function makeHttpRequest(data) {
       },
     };
 
-    const req = http.request(options, (res) => {
+    const req = https.request(options, (res) => {
       let body = "";
 
       res.on("data", (chunk) => {

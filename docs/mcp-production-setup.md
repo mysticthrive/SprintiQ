@@ -251,19 +251,19 @@ International users can access these tools:
 
 ### Core Tools
 
-- `generateUserStories` - Generate user stories with AI
-- `createTask` - Create new tasks
-- `updateTask` - Update existing tasks
-- `listTasks` - List and filter tasks
-- `findSimilarTasks` - Find similar tasks
-- `assignTask` - Assign tasks to team members
-- `generateSprintGoal` - Generate sprint goals
+- `SPRINTIQ_GENERATE_USER_STORIES` - Generate user stories with AI
+- `SPRINTIQ_CREATE_TASK` - Create new tasks
+- `SPRINTIQ_UPDATE_TASK` - Update existing tasks
+- `SPRINTIQ_LIST_TASKS` - List and filter tasks
+- `SPRINTIQ_FIND_SIMILAR_TASKS` - Find similar tasks
+- `SPRINTIQ_ASSIGN_TASK` - Assign tasks to team members
+- `SPRINTIQ_GENERATE_SPRINT_GOAL` - Generate sprint goals
 
 ### Analytics Tools
 
-- `getProjectAnalytics` - Get project metrics
-- `getTeamPerformance` - Team performance data
-- `getWorkspaceInsights` - Workspace analytics
+- `SPRINTIQ_GET_PROJECT_ANALYTICS` - Get project metrics
+- `SPRINTIQ_GET_TEAM_PERFORMANCE` - Team performance data
+- `SPRINTIQ_GET_WORKSPACE_INSIGHTS` - Workspace analytics
 
 ## 7. Rate Limiting and CORS
 
@@ -373,7 +373,7 @@ curl -I https://app.sprintiq.ai/api/mcp/server
 
 ```javascript
 // This is what international users will experience
-const result = await mcpTool.generateUserStories({
+const result = await mcpTool.SPRINTIQ_GENERATE_USER_STORIES({
   featureDescription: "User management system",
   numberOfStories: 3,
   complexity: "moderate",

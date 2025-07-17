@@ -123,42 +123,43 @@ export interface MCPTeamInfo {
 // SprintiQ specific MCP tool definitions
 export interface SprintiQMCPTools {
   // User Management
-  validateUser: MCPTool;
-  getUserContext: MCPTool;
+  SPRINTIQ_VALIDATE_USER: MCPTool;
+  SPRINTIQ_GET_USER_CONTEXT: MCPTool;
+  SPRINTIQ_CHECK_ACTIVE_CONNECTION: MCPTool;
 
   // Task Management
-  createTask: MCPTool;
-  updateTask: MCPTool;
-  deleteTask: MCPTool;
-  getTask: MCPTool;
-  listTasks: MCPTool;
+  SPRINTIQ_CREATE_TASK: MCPTool;
+  SPRINTIQ_UPDATE_TASK: MCPTool;
+  SPRINTIQ_DELETE_TASK: MCPTool;
+  SPRINTIQ_GET_TASK: MCPTool;
+  SPRINTIQ_LIST_TASKS: MCPTool;
 
   // Project Management
-  createProject: MCPTool;
-  getProject: MCPTool;
-  listProjects: MCPTool;
+  SPRINTIQ_CREATE_PROJECT: MCPTool;
+  SPRINTIQ_GET_PROJECT: MCPTool;
+  SPRINTIQ_LIST_PROJECTS: MCPTool;
 
   // Sprint Management
-  createSprint: MCPTool;
-  getSprint: MCPTool;
-  listSprints: MCPTool;
-  generateSprintGoal: MCPTool;
+  SPRINTIQ_CREATE_SPRINT: MCPTool;
+  SPRINTIQ_GET_SPRINT: MCPTool;
+  SPRINTIQ_LIST_SPRINTS: MCPTool;
+  SPRINTIQ_GENERATE_SPRINT_GOAL: MCPTool;
 
   // AI-Powered Features
-  generateUserStories: MCPTool;
-  analyzeTaskPriority: MCPTool;
-  findSimilarTasks: MCPTool;
-  trainTAWOS: MCPTool;
+  SPRINTIQ_GENERATE_USER_STORIES: MCPTool;
+  SPRINTIQ_ANALYZE_TASK_PRIORITY: MCPTool;
+  SPRINTIQ_FIND_SIMILAR_TASKS: MCPTool;
+  SPRINTIQ_TRAIN_TAWOS: MCPTool;
 
   // Team Management
-  getTeamMembers: MCPTool;
-  assignTask: MCPTool;
-  getTeamCapacity: MCPTool;
+  SPRINTIQ_GET_TEAM_MEMBERS: MCPTool;
+  SPRINTIQ_ASSIGN_TASK: MCPTool;
+  SPRINTIQ_GET_TEAM_CAPACITY: MCPTool;
 
   // Analytics
-  getProjectAnalytics: MCPTool;
-  getSprintAnalytics: MCPTool;
-  getTeamPerformance: MCPTool;
+  SPRINTIQ_GET_PROJECT_ANALYTICS: MCPTool;
+  SPRINTIQ_GET_SPRINT_ANALYTICS: MCPTool;
+  SPRINTIQ_GET_TEAM_PERFORMANCE: MCPTool;
 }
 
 // MCP Server Configuration
