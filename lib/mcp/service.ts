@@ -61,6 +61,16 @@ export class MCPService {
   }
 
   /**
+   * Select workspace by name or ID
+   */
+  async selectWorkspaceByName(userEmail: string, workspaceNameOrId: string) {
+    return await enhancedMCPService.selectWorkspaceByName(
+      userEmail,
+      workspaceNameOrId
+    );
+  }
+
+  /**
    * Handle team member selection workflow
    */
   async handleTeamMemberSelection(

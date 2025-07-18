@@ -81,6 +81,11 @@ export class SprintiQMCPServer implements MCPServer {
         return await this.getAuthenticatedUser(params);
       }
 
+      // Special handling for SPRINTIQ_SELECT_WORKSPACE - workspace selection
+      if (name === "SPRINTIQ_SELECT_WORKSPACE") {
+        return await this.selectWorkspace(params);
+      }
+
       // For all other tools, validate context
       const context: SprintiQContext = this.validateContext(params.context);
 
@@ -217,6 +222,21 @@ export class SprintiQMCPServer implements MCPServer {
           type: "object",
           properties: {},
           required: [],
+        },
+      },
+      {
+        name: "SPRINTIQ_SELECT_WORKSPACE",
+        description:
+          "Select a workspace by name or ID. Required before using other SprintiQ tools.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            workspaceNameOrId: {
+              type: "string",
+              description: "Workspace name or ID to select",
+            },
+          },
+          required: ["workspaceNameOrId"],
         },
       },
       {
@@ -1346,7 +1366,7 @@ export class SprintiQMCPServer implements MCPServer {
                 name: connectionResult.user.name,
                 company: connectionResult.user.company,
                 workspaces: connectionResult.user.workspaces.map((w) => ({
-                  id: w.workspace_id,
+                  id: w.id,
                   name: w.name,
                   role: w.role,
                 })),
@@ -1376,37 +1396,130 @@ export class SprintiQMCPServer implements MCPServer {
             },
           };
         }
+      } else {
+        return {
+          success: false,
+          error: "No authenticated user found",
+          data: {
+            status: "not_authenticated",
+            message:
+              "Please authenticate first using SPRINTIQ_CHECK_ACTIVE_CONNECTION",
+            instructions: [
+              "You need to authenticate with SprintIQ first.",
+              "Use the SPRINTIQ_CHECK_ACTIVE_CONNECTION tool to get the authentication URL.",
+              "After signing in, type 'Done' in a new thread and try again.",
+            ],
+          },
+          metadata: {
+            tool: "SPRINTIQ_GET_AUTHENTICATED_USER",
+            step: "not_authenticated",
+            timestamp: new Date().toISOString(),
+          },
+        };
       }
-
-      // No completed authentication found
-      return {
-        success: false,
-        error:
-          "No authentication found. Please sign in first by calling SPRINTIQ_CHECK_ACTIVE_CONNECTION",
-        data: {
-          status: "not_authenticated",
-          message: "Please authenticate first",
-          instructions: [
-            "1. Call SPRINTIQ_CHECK_ACTIVE_CONNECTION to get the signin URL",
-            "2. Sign in via the browser",
-            "3. Then call this tool again",
-          ],
-        },
-        metadata: {
-          tool: "SPRINTIQ_GET_AUTHENTICATED_USER",
-          step: "not_authenticated",
-          timestamp: new Date().toISOString(),
-        },
-      };
     } catch (error) {
-      console.error("Error getting authenticated user:", error);
+      console.error("Error in getAuthenticatedUser:", error);
       return {
         success: false,
-        error: "Failed to get authenticated user info",
+        error: "Failed to get authenticated user",
         metadata: {
           tool: "SPRINTIQ_GET_AUTHENTICATED_USER",
           step: "error",
           timestamp: new Date().toISOString(),
+          errorDetails:
+            error instanceof Error ? error.message : "Unknown error",
+        },
+      };
+    }
+  }
+
+  private async selectWorkspace(params: any): Promise<MCPToolResult> {
+    try {
+      const { workspaceNameOrId } = params;
+
+      if (!workspaceNameOrId) {
+        return {
+          success: false,
+          error: "workspaceNameOrId is required",
+          metadata: {
+            tool: "SPRINTIQ_SELECT_WORKSPACE",
+            step: "validation",
+            timestamp: new Date().toISOString(),
+          },
+        };
+      }
+
+      // Get the user email from the most recent completed authentication
+      const completedAuth =
+        await enhancedMCPService.getCompletedAuthentication();
+
+      if (!completedAuth.success || !completedAuth.email) {
+        return {
+          success: false,
+          error: "No authenticated user found",
+          metadata: {
+            tool: "SPRINTIQ_SELECT_WORKSPACE",
+            step: "authentication_check",
+            timestamp: new Date().toISOString(),
+          },
+        };
+      }
+
+      const userEmail = completedAuth.email;
+
+      // Use the enhanced service to select workspace
+      const result = await enhancedMCPService.selectWorkspaceByName(
+        userEmail,
+        workspaceNameOrId
+      );
+
+      if (result.selectedWorkspace) {
+        return {
+          success: true,
+          data: {
+            status: "workspace_selected",
+            message: `✅ Workspace "${result.selectedWorkspace.name}" selected successfully!`,
+            selectedWorkspace: {
+              id: result.selectedWorkspace.id,
+              name: result.selectedWorkspace.name,
+              role: result.selectedWorkspace.role,
+            },
+            instructions: [
+              `You are now working in workspace: ${result.selectedWorkspace.name}`,
+              "You can now use other SprintIQ tools to create tasks, projects, etc.",
+              "For example: 'Create a task called \"Fix login bug\"'",
+            ],
+          },
+          metadata: {
+            tool: "SPRINTIQ_SELECT_WORKSPACE",
+            step: "selected",
+            timestamp: new Date().toISOString(),
+            workspaceId: result.selectedWorkspace.id,
+          },
+        };
+      } else {
+        return {
+          success: false,
+          error: "Failed to select workspace",
+          metadata: {
+            tool: "SPRINTIQ_SELECT_WORKSPACE",
+            step: "selection_failed",
+            timestamp: new Date().toISOString(),
+          },
+        };
+      }
+    } catch (error) {
+      console.error("Error in selectWorkspace:", error);
+      return {
+        success: false,
+        error:
+          error instanceof Error ? error.message : "Failed to select workspace",
+        metadata: {
+          tool: "SPRINTIQ_SELECT_WORKSPACE",
+          step: "error",
+          timestamp: new Date().toISOString(),
+          errorDetails:
+            error instanceof Error ? error.message : "Unknown error",
         },
       };
     }

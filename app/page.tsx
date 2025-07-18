@@ -26,6 +26,12 @@ import JiraSvg from "@/components/svg/apps/JiraSvg";
 import TrelloSvg from "@/components/svg/apps/TrelloSvg";
 import AsanaSvg from "@/components/svg/apps/AsanaSvg";
 import HeroSection from "@/components/landing/HeroSection";
+import { AiBrainSvg } from "@/components/svg/AiBrainSvg";
+import { TeamSvg } from "@/components/svg/TeamSvg";
+import { BadgeSvg } from "@/components/svg/BadgeSvg";
+import { IntegrationSvg } from "@/components/svg/IntegrationSvg";
+import { InventiveSvg } from "@/components/svg/InventiveSvg";
+import { PlanningSvg } from "@/components/svg/PlanningSvg";
 
 const staggerContainer = {
   animate: {
@@ -100,37 +106,37 @@ export default function HomePage() {
           >
             {[
               {
-                icon: <Target className="h-8 w-8 text-white" />,
+                icon: <AiBrainSvg color="#fff" />,
                 title: "AI Story Generation",
                 description:
                   "Turn scattered feature requests into detailed, actionable user stories with AI trained on real-world project successes and failures.",
               },
               {
-                icon: <Users className="h-8 w-8 text-white" />,
+                icon: <TeamSvg color="#fff" />,
                 title: "Team Collaboration",
                 description:
                   "Real-time collaboration tools that keep everyone aligned and productive, no matter where they work.",
               },
               {
-                icon: <BarChart2 className="h-8 w-8 text-white" />,
+                icon: <PlanningSvg color="#fff" />,
                 title: "Sprint Planning",
                 description:
                   "Intelligent sprint planning with capacity estimation and risk assessment based on team performance.",
               },
               {
-                icon: <Zap className="h-8 w-8 text-white" />,
+                icon: <InventiveSvg color="#fff" />,
                 title: "Smart Prioritization",
                 description:
                   "AI-powered backlog prioritization that considers business value, complexity, and dependencies.",
               },
               {
-                icon: <Shield className="h-8 w-8 text-white" />,
+                icon: <BadgeSvg color="#fff" />,
                 title: "Secure & Reliable",
                 description:
                   "Bank-level security with data encryption and compliance with industry standards.",
               },
               {
-                icon: <Layers className="h-8 w-8 text-white" />,
+                icon: <IntegrationSvg color="#fff" />,
                 title: "Core Integrations",
                 description:
                   "Connect with essential tools like Jira, GitHub, Slack, and more for seamless workflow.",
@@ -145,7 +151,7 @@ export default function HomePage() {
                 <Card className="h-full bg-white/10 backdrop-blur-xl border-emerald-500/20 hover:border-emerald-400/40 transition-all duration-300 hover:shadow-emerald-500/20 hover:shadow-xl animate-bounce-in">
                   <CardContent className="p-8">
                     <motion.div
-                      className="w-16 h-16 bg-gradient-to-r from-emerald-500 to-green-500 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300 animate-float"
+                      className="w-16 h-16 p-3 bg-gradient-to-r from-emerald-500 to-green-500 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300"
                       variants={iconVariant}
                       whileHover={{ rotate: 360 }}
                       transition={{ duration: 0.6 }}

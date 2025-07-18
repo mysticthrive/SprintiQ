@@ -667,6 +667,22 @@ export class EnhancedMCPService {
       const { user } = userSession;
       const availableWorkspaces = user.workspaces;
 
+      // If user has no workspaces, return error
+      if (!availableWorkspaces || availableWorkspaces.length === 0) {
+        throw new Error(
+          "No workspaces found for user. Please create a workspace first or contact your administrator."
+        );
+      }
+
+      // Check if user already has a workspace selected
+      if (userSession.workspace) {
+        return {
+          workspaces: availableWorkspaces,
+          selectedWorkspace: userSession.workspace,
+          requiresSelection: false,
+        };
+      }
+
       // If workspace ID is provided, validate and select it
       if (workspaceId) {
         const selectedWorkspace = availableWorkspaces.find(
@@ -712,6 +728,63 @@ export class EnhancedMCPService {
       };
     } catch (error) {
       console.error("Error handling workspace selection:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Select workspace by name or ID
+   */
+  async selectWorkspaceByName(
+    userEmail: string,
+    workspaceNameOrId: string
+  ): Promise<MCPWorkspaceSelection> {
+    try {
+      const userSession = await this.getUserSession(userEmail);
+
+      if (!userSession) {
+        throw new Error(
+          "No active session found. Please establish connection first."
+        );
+      }
+
+      const { user } = userSession;
+      const availableWorkspaces = user.workspaces;
+
+      // Find workspace by name (case-insensitive) or ID
+      const selectedWorkspace = availableWorkspaces.find(
+        (w) =>
+          w.name.toLowerCase() === workspaceNameOrId.toLowerCase() ||
+          w.workspace_id === workspaceNameOrId ||
+          w.id === workspaceNameOrId
+      );
+
+      if (!selectedWorkspace) {
+        // Return available options if workspace not found
+        const workspaceOptions = availableWorkspaces
+          .map(
+            (w, index) =>
+              `${index + 1}. ${w.name} (ID: ${w.id}) - Role: ${w.role}`
+          )
+          .join("\n");
+
+        throw new Error(
+          `Workspace "${workspaceNameOrId}" not found. Available workspaces:\n${workspaceOptions}`
+        );
+      }
+
+      // Update user session with selected workspace
+      await this.updateUserSession(userEmail, {
+        workspace: selectedWorkspace,
+      });
+
+      return {
+        workspaces: availableWorkspaces,
+        selectedWorkspace,
+        requiresSelection: false,
+      };
+    } catch (error) {
+      console.error("Error selecting workspace by name:", error);
       throw error;
     }
   }
@@ -774,6 +847,54 @@ export class EnhancedMCPService {
   }
 
   /**
+   * Detect if user is trying to select a workspace through natural language
+   */
+  private detectWorkspaceSelection(params: any): string | null {
+    // Check common patterns for workspace selection
+    const patterns = [
+      /use workspace\s+([^\s]+)/i,
+      /select workspace\s+([^\s]+)/i,
+      /workspace\s+([^\s]+)/i,
+      /switch to\s+([^\s]+)/i,
+      /go to\s+([^\s]+)/i,
+      /work in\s+([^\s]+)/i,
+      /choose\s+([^\s]+)/i,
+    ];
+
+    // Check if any parameter contains workspace selection text
+    for (const [key, value] of Object.entries(params)) {
+      if (typeof value === "string") {
+        for (const pattern of patterns) {
+          const match = value.match(pattern);
+          if (match && match[1]) {
+            return match[1];
+          }
+        }
+
+        // Also check if the entire parameter value could be a workspace name
+        // This handles cases where user just says "Dream1" or similar
+        // Only do this for certain parameter names that are likely to contain workspace names
+        if (
+          key.toLowerCase().includes("workspace") ||
+          key.toLowerCase().includes("name")
+        ) {
+          const trimmed = value.trim();
+          if (
+            trimmed.length > 0 &&
+            trimmed.length < 50 &&
+            !trimmed.includes(" ")
+          ) {
+            // Could be a workspace name, but we need to validate it
+            return trimmed;
+          }
+        }
+      }
+    }
+
+    return null;
+  }
+
+  /**
    * Step 5: Execute tool with proper context
    */
   async executeToolWithWorkflow(
@@ -818,6 +939,47 @@ export class EnhancedMCPService {
         };
       }
 
+      // Check if user is trying to select a workspace through natural language
+      // Only do this if they don't already have a workspace selected
+      const currentSession = await this.getUserSession(userEmail);
+
+      if (!currentSession?.workspace) {
+        const workspaceSelection = this.detectWorkspaceSelection(params);
+        if (workspaceSelection) {
+          try {
+            const result = await this.selectWorkspaceByName(
+              userEmail,
+              workspaceSelection
+            );
+
+            if (result.selectedWorkspace) {
+              return {
+                success: true,
+                data: [
+                  {
+                    type: "text",
+                    text: `✅ Workspace "${result.selectedWorkspace.name}" selected successfully!\n\nYou are now working in workspace: ${result.selectedWorkspace.name}\nYou can now use other SprintIQ tools to create tasks, projects, etc.\nFor example: 'List my projects' or 'Create a task called "Fix login bug"'`,
+                  },
+                ],
+                metadata: {
+                  step: "workspace_selected",
+                  workspaceId: result.selectedWorkspace.id,
+                  workspaceName: result.selectedWorkspace.name,
+                  timestamp: new Date().toISOString(),
+                },
+              };
+            }
+          } catch (error) {
+            // If workspace selection fails, continue with normal flow
+            // This allows the system to show the workspace selection prompt
+            console.log(
+              "Workspace selection attempt failed, continuing with normal flow:",
+              error
+            );
+          }
+        }
+      }
+
       // Special handling for SPRINTIQ_CHECK_ACTIVE_CONNECTION - it handles its own workflow
       if (toolName === "SPRINTIQ_CHECK_ACTIVE_CONNECTION") {
         try {
@@ -844,26 +1006,12 @@ export class EnhancedMCPService {
         }
       }
 
-      // Step 1: Check active connection
+      // Step 1: Check if user has an active session (skip connection check)
       try {
-        const connectionStatus = await this.checkActiveConnection();
+        const userSession = await this.getUserSession(userEmail);
 
-        if (!connectionStatus.isConnected) {
-          if (connectionStatus.requiresAuthorization) {
-            return {
-              success: false,
-              error: "Authorization required",
-              metadata: {
-                step: "connection_check",
-                requiresAuthorization: true,
-                authorizationUrl: connectionStatus.authorizationUrl,
-                authToken: connectionStatus.authToken,
-                details: connectionStatus.error || "User needs to authenticate",
-              },
-            };
-          }
-
-          // Try to establish connection
+        if (!userSession) {
+          // No session found, try to establish connection
           const connectionResult = await this.establishConnection(userEmail);
 
           if (!connectionResult.success) {
@@ -892,6 +1040,13 @@ export class EnhancedMCPService {
       }
 
       // Step 2: Handle workspace selection
+      let finalUserSession: {
+        user: MCPValidatedUser;
+        workspace?: MCPWorkspaceInfo;
+        teamMembers?: MCPTeamInfo[];
+        connectionId: string;
+      } | null = null;
+
       try {
         const workspaceSelection = await this.handleWorkspaceSelection(
           userEmail,
@@ -899,20 +1054,57 @@ export class EnhancedMCPService {
         );
 
         if (workspaceSelection.requiresSelection) {
+          // Format workspace options for clear presentation
+          const workspaceOptions = workspaceSelection.workspaces
+            .map(
+              (w, index) =>
+                `${index + 1}. ${w.name} (ID: ${w.id}) - Role: ${w.role}`
+            )
+            .join("\n");
+
           return {
             success: false,
             error: "Workspace selection required",
             data: {
+              message: "Please select a workspace to continue:",
+              workspaces: workspaceOptions,
               availableWorkspaces: workspaceSelection.workspaces.map((w) => ({
-                id: w.workspace_id,
+                id: w.id,
                 name: w.name,
                 role: w.role,
               })),
+              instructions: [
+                "You have access to multiple workspaces.",
+                "Please specify which workspace you'd like to use by providing the workspace name or ID.",
+                "You can respond with any of these formats:",
+                "- 'Use workspace Dream1'",
+                "- 'Select workspace Dream1'",
+                "- 'Switch to Dream1'",
+                "- Just 'Dream1'",
+                `Available workspaces:\n${workspaceOptions}`,
+              ],
             },
             metadata: {
               step: "workspace_selection",
               requiresWorkspaceSelection: true,
-              details: "User needs to select a workspace",
+              details: "User needs to select a workspace before proceeding",
+            },
+          };
+        }
+
+        // Workspace was selected, get the updated session
+        finalUserSession = await this.getUserSession(userEmail);
+        if (!finalUserSession || !finalUserSession.workspace) {
+          console.error(
+            `[MCP] Workspace selection completed but session not updated properly for ${userEmail}`
+          );
+          return {
+            success: false,
+            error: "Workspace selection failed to persist",
+            metadata: {
+              step: "workspace_selection",
+              details:
+                "Workspace was selected but session was not updated properly",
             },
           };
         }
@@ -957,6 +1149,9 @@ export class EnhancedMCPService {
               },
             };
           }
+
+          // Team members were selected, get the updated session
+          finalUserSession = await this.getUserSession(userEmail);
         } catch (error) {
           console.error("Team member selection error:", error);
           return {
@@ -972,7 +1167,9 @@ export class EnhancedMCPService {
 
       // Step 4: Execute the tool
       try {
-        const userSession = await this.getUserSession(userEmail);
+        // Use the session we already have from the workflow steps
+        const userSession =
+          finalUserSession || (await this.getUserSession(userEmail));
         if (!userSession) {
           return {
             success: false,

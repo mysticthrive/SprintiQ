@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
 
   let query = supabase
     .from("users")
-    .select("id, name, email, company, created_at, allowed", {
+    .select("id, name, email, company, created_at, allowed, role", {
       count: "exact",
     });
 
@@ -53,18 +53,32 @@ export async function GET(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   const supabase = await createServerSupabaseClient();
-  const { id, allowed } = await req.json();
-  if (!id || typeof allowed !== "boolean") {
-    return NextResponse.json(
-      { error: "Missing id or allowed" },
-      { status: 400 }
-    );
+  const body = await req.json();
+  const { id, allowed, role } = body;
+
+  if (!id) {
+    return NextResponse.json({ error: "Missing id" }, { status: 400 });
   }
-  const { error } = await supabase
-    .from("users")
-    .update({ allowed })
-    .eq("id", id);
-  if (error)
-    return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // Handle allowed status update
+  if (typeof allowed === "boolean") {
+    const { error } = await supabase
+      .from("users")
+      .update({ allowed })
+      .eq("id", id);
+    if (error)
+      return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  // Handle role update
+  if (role && ["admin", "user", "investor"].includes(role)) {
+    const { error } = await supabase
+      .from("users")
+      .update({ role })
+      .eq("id", id);
+    if (error)
+      return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
   return NextResponse.json({ success: true });
 }

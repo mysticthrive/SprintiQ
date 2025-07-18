@@ -59,13 +59,27 @@ export async function middleware(request: NextRequest) {
   if (session.user?.email) {
     const { data: userRecord, error: userError } = await supabase
       .from("users")
-      .select("allowed")
+      .select("allowed, role")
       .eq("email", session.user.email.toLowerCase().trim())
       .maybeSingle();
     if (userError || !userRecord || userRecord.allowed === false) {
       // Sign out the user and redirect to access denied
       await supabase.auth.signOut();
       return NextResponse.redirect(new URL("/access-denied", request.url));
+    }
+
+    // Check admin access for admin routes
+    if (pathname.startsWith("/app/admin")) {
+      if (userRecord.role !== "admin") {
+        return NextResponse.redirect(new URL("/access-denied", request.url));
+      }
+    }
+
+    // Check investor access for investor relations page
+    if (pathname.startsWith("/app/investor-relations")) {
+      if (userRecord.role !== "investor") {
+        return NextResponse.redirect(new URL("/access-denied", request.url));
+      }
     }
   }
 

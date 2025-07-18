@@ -259,3 +259,7 @@ export const ROLE_SKILLS: Record<string, string[]> = {
     "Security",
   ],
 };
+
+export interface SvgProps {
+  color?: string;
+}

@@ -468,34 +468,167 @@ async function handleCallTool(
       }
     }
 
-    // For all other tools, require proper context
-    if (!args.context || !args.context.workspaceId || !args.context.userId) {
+    // Special handling for SPRINTIQ_SELECT_WORKSPACE - use enhanced workflow
+    if (name === "SPRINTIQ_SELECT_WORKSPACE") {
+      try {
+        // Get the user email from the most recent completed authentication
+        const completedAuth =
+          await enhancedMCPService.getCompletedAuthentication();
+
+        if (!completedAuth.success || !completedAuth.email) {
+          return NextResponse.json(
+            {
+              jsonrpc: "2.0",
+              id: message.id,
+              error: {
+                code: -32603,
+                message: "No authenticated user found",
+                data: {
+                  message:
+                    "Please authenticate first using SPRINTIQ_CHECK_ACTIVE_CONNECTION",
+                  instructions: [
+                    "1. Call SPRINTIQ_CHECK_ACTIVE_CONNECTION to check authentication status",
+                    "2. If not authenticated, follow the authorization URL to sign in",
+                    "3. After signing in, call SPRINTIQ_GET_AUTHENTICATED_USER",
+                    "4. Then you can select a workspace using SPRINTIQ_SELECT_WORKSPACE",
+                  ],
+                },
+              },
+            },
+            { status: 401, headers: corsHeaders }
+          );
+        }
+
+        // Use enhanced service to select workspace
+        const result = await enhancedMCPService.selectWorkspaceByName(
+          completedAuth.email,
+          args.workspaceNameOrId
+        );
+
+        if (result.selectedWorkspace) {
+          return NextResponse.json(
+            {
+              jsonrpc: "2.0",
+              id: message.id,
+              result: {
+                content: [
+                  {
+                    type: "text",
+                    text: `✅ Workspace "${result.selectedWorkspace.name}" selected successfully!\n\nYou are now working in workspace: ${result.selectedWorkspace.name}\nYou can now use other SprintIQ tools to create tasks, projects, etc.\nFor example: 'Create a task called "Fix login bug"'`,
+                  },
+                ],
+                metadata: {
+                  tool: "SPRINTIQ_SELECT_WORKSPACE",
+                  step: "selected",
+                  timestamp: new Date().toISOString(),
+                  workspaceId: result.selectedWorkspace.id,
+                },
+              },
+            },
+            { headers: corsHeaders }
+          );
+        } else {
+          return NextResponse.json(
+            {
+              jsonrpc: "2.0",
+              id: message.id,
+              error: {
+                code: -32603,
+                message: "Failed to select workspace",
+                data: {
+                  tool: "SPRINTIQ_SELECT_WORKSPACE",
+                  step: "selection_failed",
+                  timestamp: new Date().toISOString(),
+                },
+              },
+            },
+            { status: 500, headers: corsHeaders }
+          );
+        }
+      } catch (error) {
+        console.error("Select workspace error:", error);
+        return NextResponse.json(
+          {
+            jsonrpc: "2.0",
+            id: message.id,
+            error: {
+              code: -32603,
+              message:
+                error instanceof Error
+                  ? error.message
+                  : "Failed to select workspace",
+              data: {
+                tool: "SPRINTIQ_SELECT_WORKSPACE",
+                step: "error",
+                timestamp: new Date().toISOString(),
+                errorDetails:
+                  error instanceof Error ? error.message : "Unknown error",
+              },
+            },
+          },
+          { status: 500, headers: corsHeaders }
+        );
+      }
+    }
+
+    // For all other tools, use the enhanced workflow
+    // First, get the user email from the most recent completed authentication
+    const completedAuth = await enhancedMCPService.getCompletedAuthentication();
+
+    if (!completedAuth.success || !completedAuth.email) {
       return NextResponse.json(
         {
           jsonrpc: "2.0",
           id: message.id,
           error: {
-            code: -32602,
-            message: "Invalid params: context is required",
+            code: -32603,
+            message: "No authenticated user found",
             data: {
               message:
-                "Tool execution requires proper context with workspaceId and userId",
-              required: {
-                context: {
-                  workspaceId: "string (required)",
-                  userId: "string (required)",
-                  email: "string (optional)",
-                },
-              },
+                "Please authenticate first using SPRINTIQ_CHECK_ACTIVE_CONNECTION",
+              instructions: [
+                "1. Call SPRINTIQ_CHECK_ACTIVE_CONNECTION to check authentication status",
+                "2. If not authenticated, follow the authorization URL to sign in",
+                "3. After signing in, call SPRINTIQ_GET_AUTHENTICATED_USER",
+                "4. Then you can use other SprintIQ tools",
+              ],
             },
           },
         },
-        { status: 400, headers: corsHeaders }
+        { status: 401, headers: corsHeaders }
       );
     }
 
     try {
-      const result = await mcpServer.callTool(name, args);
+      // Use the enhanced workflow which handles workspace selection automatically
+      const result = await enhancedMCPService.executeToolWithWorkflow(
+        completedAuth.email,
+        name,
+        args
+      );
+
+      // Handle workspace selection required case first (regardless of success status)
+      if (result.metadata?.requiresWorkspaceSelection) {
+        return NextResponse.json(
+          {
+            jsonrpc: "2.0",
+            id: message.id,
+            result: {
+              content: [
+                {
+                  type: "text",
+                  text:
+                    result.data.message +
+                    "\n\n" +
+                    result.data.instructions.join("\n"),
+                },
+              ],
+              metadata: result.metadata,
+            },
+          },
+          { headers: corsHeaders }
+        );
+      }
 
       if (result.success) {
         return NextResponse.json(

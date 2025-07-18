@@ -16,37 +16,19 @@ import {
   Sparkles,
 } from "lucide-react";
 import Link from "next/link";
-import SlackSvg from "@/components/svg/apps/SlackSvg";
-import FigmaSvg from "@/components/svg/apps/FigmaSvg";
 import JiraSvg from "@/components/svg/apps/JiraSvg";
-import ZoomSvg from "@/components/svg/apps/ZoomSvg";
-import NotionSvg from "@/components/svg/apps/NotionSvg";
-import GithubSvg from "@/components/svg/apps/GithubSvg";
 import AsanaSvg from "@/components/svg/apps/AsanaSvg";
 import { ClickUpSvg } from "@/components/svg/apps/ClickUpSvg";
 import TrelloSvg from "@/components/svg/apps/TrelloSvg";
 import { MondaySvg } from "@/components/svg/apps/MondaySvg";
 import { AirtableSvg } from "@/components/svg/apps/AirtableSvg";
 import { useState } from "react";
-
-// Animation variants
-const fadeInUp = {
-  initial: { opacity: 0, y: 30 },
-  animate: { opacity: 1, y: 0 },
-  transition: { duration: 0.8, ease: "easeOut" },
-};
-
-const slideInLeft = {
-  initial: { opacity: 0, x: -50 },
-  animate: { opacity: 1, x: 0 },
-  transition: { duration: 0.8, ease: "easeOut" },
-};
-
-const slideInRight = {
-  initial: { opacity: 0, x: 50 },
-  animate: { opacity: 1, x: 0 },
-  transition: { duration: 0.8, ease: "easeOut" },
-};
+import { AiBrainSvg } from "@/components/svg/AiBrainSvg";
+import { InventiveSvg } from "@/components/svg/InventiveSvg";
+import { TimeEffeciencySvg } from "@/components/svg/TimeEffeciencySvg";
+import { DataAnalyticsSvg } from "@/components/svg/DataAnalyticsSvg";
+import { ErrorsSvg } from "@/components/svg/ErrorsSvg";
+import { AISvg } from "@/components/svg/AISvg";
 
 const staggerContainer = {
   animate: {
@@ -74,7 +56,7 @@ export default function FeaturesPage() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const features = [
     {
-      icon: Sparkles,
+      icon: <AiBrainSvg color="#fff" />,
       title: "AI-Native Story Generation",
       description:
         "Turn scattered feature requests into detailed, actionable user stories with AI trained on real-world project successes and failures.",
@@ -86,7 +68,7 @@ export default function FeaturesPage() {
       ],
     },
     {
-      icon: Target,
+      icon: <InventiveSvg color="#fff" />,
       title: "Intelligent Prioritization",
       description:
         "Let your data drive your backlog. Our AI analyzes business value, complexity, dependencies, and risk to recommend optimal story ordering and backlog prioritization.",
@@ -98,7 +80,7 @@ export default function FeaturesPage() {
       ],
     },
     {
-      icon: Shield,
+      icon: <ErrorsSvg color="#fff" />,
       title: "Sprint Risk Intelligence",
       description:
         "Identify and mitigate sprint risks before they impact delivery. Our AI analyzes patterns to predict potential bottlenecks and suggests preventative actions.",
@@ -110,7 +92,7 @@ export default function FeaturesPage() {
       ],
     },
     {
-      icon: Zap,
+      icon: <AISvg color="#fff" />,
       title: "AI-Powered Sprint Planning",
       description:
         "Intelligent recommendations for sprint capacity, task estimation, and resource allocation based on your historical data, team performance, and our AI Agent's analysis of real-world projects with 87-89% completion rates and failure prevention patterns.",
@@ -122,7 +104,7 @@ export default function FeaturesPage() {
       ],
     },
     {
-      icon: BarChart3,
+      icon: <DataAnalyticsSvg color="#fff" />,
       title: "Advanced Analytics",
       description:
         "Comprehensive reporting and analytics dashboard with customizable metrics, burndown charts, and performance insights.",
@@ -134,7 +116,7 @@ export default function FeaturesPage() {
       ],
     },
     {
-      icon: Clock,
+      icon: <TimeEffeciencySvg color="#fff" />,
       title: "Time Management",
       description:
         "Built-in time tracking, automated timesheets, and productivity insights to optimize your team's workflow.",
@@ -280,11 +262,11 @@ export default function FeaturesPage() {
               >
                 <div className="flex items-start space-x-6">
                   <motion.div
-                    className="w-16 h-16 bg-gradient-to-r from-emerald-500 to-green-500 rounded-2xl flex items-center justify-center flex-shrink-0 group-hover:shadow-lg group-hover:shadow-emerald-500/30 transition-all duration-300"
+                    className="w-16 h-16 p-2 bg-gradient-to-r from-emerald-500 to-green-500 rounded-2xl flex items-center justify-center flex-shrink-0 group-hover:shadow-lg group-hover:shadow-emerald-500/30 transition-all duration-300"
                     whileHover={{ scale: 1.1, rotate: 5 }}
                     variants={iconVariant}
                   >
-                    <feature.icon className="h-8 w-8 text-white animate-float" />
+                    {feature.icon}
                   </motion.div>
                   <div className="flex-1">
                     <motion.h3

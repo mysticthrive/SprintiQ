@@ -20,7 +20,15 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 import { LoadingOverlay } from "@/components/ui/loading-page";
+import { MoreHorizontal, UserCheck, UserX, Settings } from "lucide-react";
 import {
   Pagination,
   PaginationContent,
@@ -39,6 +47,7 @@ interface User {
   created_at: string;
   allowed: boolean;
   avatar_url?: string;
+  role: string;
 }
 
 export default function AdminUsersClient() {
@@ -48,9 +57,12 @@ export default function AdminUsersClient() {
   const [loading, setLoading] = useState(false);
   const [pendingUser, setPendingUser] = useState<User | null>(null);
   const [pendingAllowed, setPendingAllowed] = useState<boolean>(false);
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize] = useState(10);
   const [total, setTotal] = useState(0);
+
+  const roles = ["admin", "user", "investor"];
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -80,15 +92,26 @@ export default function AdminUsersClient() {
     fetchUsers();
   };
 
+  const handleUpdateRole = async (id: string, role: string) => {
+    await fetch("/api/admin/users", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, role }),
+    });
+    fetchUsers();
+  };
+
   const handleRequestToggleAllowed = (user: User, allowed: boolean) => {
     setPendingUser(user);
     setPendingAllowed(allowed);
+    setShowConfirmDialog(true);
   };
 
   const handleConfirmToggleAllowed = async () => {
     if (pendingUser) {
       await handleToggleAllowed(pendingUser.id, pendingAllowed);
       setPendingUser(null);
+      setShowConfirmDialog(false);
     }
   };
 
@@ -125,6 +148,7 @@ export default function AdminUsersClient() {
               <th className="px-4 py-3 text-left">User</th>
               <th className="px-4 py-3 text-left">Email</th>
               <th className="px-4 py-3 text-left">Company</th>
+              <th className="px-4 py-3 text-left">Role</th>
               <th className="px-4 py-3 text-left">Created At</th>
               <th className="px-4 py-3 text-left">Allowed</th>
               <th className="px-4 py-3 text-left">Action</th>
@@ -162,46 +186,114 @@ export default function AdminUsersClient() {
                   {user.company}
                 </td>
                 <td className="px-4 py-3 workspace-sidebar-text group-hover:scale-105 duration-300">
+                  <Select
+                    value={user.role}
+                    onValueChange={(newRole) =>
+                      handleUpdateRole(user.id, newRole)
+                    }
+                  >
+                    <SelectTrigger className="w-32">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {roles.map((role) => (
+                        <SelectItem key={role} value={role}>
+                          {role.charAt(0).toUpperCase() + role.slice(1)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </td>
+                <td className="px-4 py-3 workspace-sidebar-text group-hover:scale-105 duration-300">
                   {new Date(user.created_at).toLocaleString()}
                 </td>
                 <td className="px-4 py-3 group-hover:scale-105 duration-300">
-                  <Badge variant={user.allowed ? "default" : "destructive"}>
+                  <span
+                    className={`px-2 py-1 rounded-md text-xs ${
+                      user.allowed
+                        ? "bg-emerald-500/10 text-emerald-600 border border-emerald-500/20"
+                        : "bg-rose-500/10 text-rose-600 border border-rose-500/20"
+                    }`}
+                  >
                     {user.allowed ? "Allowed" : "Not Allowed"}
-                  </Badge>
+                  </span>
                 </td>
                 <td className="px-4 py-3 group-hover:scale-105 duration-300">
-                  <Dialog>
-                    <DialogTrigger asChild>
-                      <Button
-                        variant={user.allowed ? "destructive" : "default"}
-                        size="sm"
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                        <MoreHorizontal className="h-4 w-4" />
+                        <span className="sr-only">Open menu</span>
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-48">
+                      <DropdownMenuItem
+                        className="flex items-center gap-2 cursor-pointer"
                         onClick={() =>
                           handleRequestToggleAllowed(user, !user.allowed)
                         }
                       >
-                        {user.allowed ? "Revoke" : "Allow"}
-                      </Button>
-                    </DialogTrigger>
+                        {user.allowed ? (
+                          <>
+                            <UserX className="h-4 w-4 text-red-500" />
+                            <span className="text-red-600">Revoke Access</span>
+                          </>
+                        ) : (
+                          <>
+                            <UserCheck className="h-4 w-4 text-green-500" />
+                            <span className="text-green-600">Allow Access</span>
+                          </>
+                        )}
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem className="flex items-center gap-2 cursor-pointer">
+                        <Settings className="h-4 w-4 text-gray-500" />
+                        <span className="text-gray-600">User Settings</span>
+                      </DropdownMenuItem>
+                      {/* Future actions can be added here */}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+
+                  {/* Confirmation Dialog */}
+                  <Dialog
+                    open={showConfirmDialog}
+                    onOpenChange={setShowConfirmDialog}
+                  >
                     <DialogContent>
                       <DialogHeader>
                         <DialogTitle>
-                          {user.allowed ? "Revoke Access" : "Allow Access"}
+                          {pendingUser && pendingUser.allowed
+                            ? "Revoke Access"
+                            : "Allow Access"}
                         </DialogTitle>
                         <DialogDescription>
                           Are you sure you want to{" "}
-                          {user.allowed ? "revoke" : "allow"} access for{" "}
-                          <span className="font-semibold">{user.name}</span>?
+                          {pendingUser && pendingUser.allowed
+                            ? "revoke"
+                            : "allow"}{" "}
+                          access for{" "}
+                          <span className="font-semibold">
+                            {pendingUser?.name}
+                          </span>
+                          ?
                         </DialogDescription>
                       </DialogHeader>
                       <DialogFooter>
                         <Button
                           variant="outline"
-                          onClick={() => setPendingUser(null)}
+                          onClick={() => {
+                            setPendingUser(null);
+                            setShowConfirmDialog(false);
+                          }}
                         >
                           Cancel
                         </Button>
                         <Button
-                          variant={user.allowed ? "destructive" : "default"}
+                          variant={
+                            pendingUser && pendingUser.allowed
+                              ? "destructive"
+                              : "default"
+                          }
                           onClick={handleConfirmToggleAllowed}
                         >
                           Confirm
